@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # =================================================================
-# VCDS Docker Starter (v2.19)
+# VCDS Docker Starter (v2.20 - xfreerdp3 Arch Linux fix)
 # =================================================================
 
-CURRENT_VERSION="2.19"
+CURRENT_VERSION="2.20"
 REPO_URL="https://raw.githubusercontent.com/navratilpetr/vcds-docker/refs/heads/main/start_vcds.sh"
 LOCAL_BIN="/usr/local/bin/vcds"
 
@@ -195,14 +195,19 @@ EOF
 run_vcds() {
     local MODE=$1
     local ACTION="RUN"
+    local RDP_CMD=""
     
     if [ "$MODE" == "SETUP" ]; then
         ACTION="SETUP"
     fi
 
     if [ "$MODE" == "RDP" ]; then
-        if ! command -v xfreerdp &> /dev/null; then
-            echo "CHYBA: xfreerdp neni nainstalovan!"
+        if command -v xfreerdp3 &> /dev/null; then
+            RDP_CMD="xfreerdp3"
+        elif command -v xfreerdp &> /dev/null; then
+            RDP_CMD="xfreerdp"
+        else
+            echo "CHYBA: xfreerdp nebo xfreerdp3 neni nainstalovan!"
             echo "Pro pouziti RDP rezimu doinstaluj: pacman -S freerdp"
             exit 1
         fi
@@ -240,8 +245,8 @@ run_vcds() {
         until bash -c 'echo > /dev/tcp/127.0.0.1/33890' 2>/dev/null; do sleep 2; done
         sleep 5
         
-        echo "Spoustim VCDS..."
-        sudo -u "$REAL_USER" env DISPLAY="${DISPLAY:-:0}" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" XDG_RUNTIME_DIR="/run/user/$(id -u "$REAL_USER")" xfreerdp /v:127.0.0.1:33890 /u:docker /p:"" /cert:ignore /app:"||$VCDS_PATH" +clipboard /dynamic-resolution &> /dev/null
+        echo "Spoustim VCDS (pouziva se $RDP_CMD)..."
+        sudo -u "$REAL_USER" env DISPLAY="${DISPLAY:-:0}" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" XDG_RUNTIME_DIR="/run/user/$(id -u "$REAL_USER")" $RDP_CMD /v:127.0.0.1:33890 /u:docker /p:"" /cert:ignore /app:"||$VCDS_PATH" +clipboard /dynamic-resolution &> /dev/null
         
         echo "Ukoncuji..."
         docker stop vcds_win7 &> /dev/null
