@@ -1,19 +1,60 @@
 #!/bin/bash
 
 # =================================================================
-# VCDS Docker Starter - Interaktivni pruvodce (v2.10 - CRLF & STA fix)
+# VCDS Docker Starter (v2.11 - Offline & Auto-update)
 # =================================================================
 
+CURRENT_VERSION="2.11"
+REPO_URL="https://raw.githubusercontent.com/navratilpetr/vcds-docker/refs/heads/main/start_vcds.sh"
+LOCAL_BIN="/usr/local/bin/vcds"
+
+# Autorestart pod sudo a lokani instalace
 if [ "$EUID" -ne 0 ]; then
     echo "Tento skript vyzaduje administratorska prava."
-    tmp_script="/tmp/start_vcds_root.sh"
-    curl -fsSL https://raw.githubusercontent.com/navratilpetr/vcds-docker/refs/heads/main/start_vcds.sh > "$tmp_script"
-    chmod +x "$tmp_script"
-    sudo env DISPLAY="$DISPLAY" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" "$tmp_script" "$@"
-    rm "$tmp_script"
-    exit 0
+    # Pokud neni soubor fyzicky na disku (spusteno pres curl)
+    if [[ "$0" == "bash" || "$0" == *"curl"* || ! -f "$0" ]]; then
+        tmp_script="/tmp/start_vcds_root.sh"
+        curl -fsSL "$REPO_URL" > "$tmp_script"
+        chmod +x "$tmp_script"
+        sudo env DISPLAY="$DISPLAY" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" "$tmp_script" "$@"
+        rm "$tmp_script"
+        exit 0
+    else
+        # Spusteno lokalne z disku (napr. prikaz vcds)
+        exec sudo env DISPLAY="$DISPLAY" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" "$0" "$@"
+    fi
 fi
 
+# Lokani instalace
+if [ "$(realpath "$0")" != "$LOCAL_BIN" ]; then
+    cp "$0" "$LOCAL_BIN"
+    chmod +x "$LOCAL_BIN"
+    echo "--- SKRIPT NAINSTALOVAN ---"
+    echo "Pro pristi spusteni staci v terminalu napsat prikaz: vcds"
+    echo "---------------------------"
+    sleep 2
+fi
+
+# Kontrola aktualizaci
+echo "Kontrola aktualizaci..."
+REMOTE_SCRIPT=$(curl -s -m 2 "$REPO_URL")
+if [ -n "$REMOTE_SCRIPT" ]; then
+    REMOTE_VERSION=$(echo "$REMOTE_SCRIPT" | grep -m 1 '^CURRENT_VERSION=' | cut -d'"' -f2)
+    if [[ "$REMOTE_VERSION" > "$CURRENT_VERSION" ]]; then
+        echo "Nalezena nova verze: $REMOTE_VERSION (soucasna: $CURRENT_VERSION)"
+        read -p "Chces aktualizovat? [y/N]: " UPDATE_CONFIRM
+        if [[ "$UPDATE_CONFIRM" == "y" ]]; then
+            echo "$REMOTE_SCRIPT" > "$LOCAL_BIN"
+            chmod +x "$LOCAL_BIN"
+            echo "Aktualizace dokoncena. Restartuji..."
+            exec "$LOCAL_BIN" "$@"
+        fi
+    fi
+else
+    echo "Offline rezim - preskakuji kontrolu aktualizaci."
+fi
+
+# Zjisteni puvodniho uzivatele
 REAL_USER=${SUDO_USER:-$USER}
 REAL_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
 
@@ -96,7 +137,7 @@ schtasks /create /tn "VCDS_Kill_Gateway" /tr "cmd.exe /c %WINDIR%\kill_gw.bat" /
 reg add "HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows Defender" /v DisableAntiSpyware /t REG_DWORD /d 1 /f
 route delete 0.0.0.0
 
-:: Vytvoreni zavadece po startu Windows (s parametrem -sta)
+:: Vytvoreni zavadece po startu Windows
 set STARTUP_DIR="%ALLUSERSPROFILE%\Microsoft\Windows\Start Menu\Programs\Startup"
 echo @echo off > %STARTUP_DIR%\vcds_launcher.bat
 echo timeout /t 5 /nobreak ^> nul >> %STARTUP_DIR%\vcds_launcher.bat
@@ -106,10 +147,8 @@ EOF
 }
 
 create_shared_scripts() {
-    # Zapis s Windows konci radku (CRLF)
     printf "=== NAVOD K INSTALACI VCDS ===\r\n1. V Linuxu uloz instalacku VCDS do slozky 'vcds_transfer' ve tvem domovskem adresari (Home).\r\n2. Tady ve Windows otevri slozku 'Shared' (Tento pocitac -> Z: nebo Sit -> host.lan).\r\n3. Nainstaluj VCDS vcetne vsech ovladacu.\r\n4. Po dokonceni instalace ZAVRI tento textovy soubor (krizkem).\r\n5. Nasledne vyskoci okno, kde vyberes spousteci soubor VCDS.\r\n" > "$TRANSFER_DIR/navod.txt"
 
-    # Robustnejsi PowerShell skript pro Win7 (PS 2.0)
     cat << 'EOF' > "$TRANSFER_DIR/startup.ps1"
 $Action = "RUN"
 if (Test-Path "\\host.lan\Data\action.txt") { $Action = (Get-Content "\\host.lan\Data\action.txt").Trim() }
@@ -184,6 +223,7 @@ uninstall() {
         rm -rf "$DATA_DIR" "$TRANSFER_DIR" "$CONFIG_DIR"
         rm -f /etc/udev/rules.d/99-vcds.rules
         udevadm control --reload-rules
+        rm -f "$LOCAL_BIN"
         echo "Soubory smazany."
         read -p "Chces smazat i Docker image (cca 5GB)? [y/N]: " IMG_CONFIRM
         [[ $IMG_CONFIRM == "y" ]] && docker rmi dockurr/windows
@@ -197,6 +237,7 @@ uninstall() {
 clear
 echo "=========================================="
 echo "    VCDS Docker Instalator / Spoustec     "
+echo "               (v$CURRENT_VERSION)        "
 echo "=========================================="
 
 if [ ! -f "$IMG_FILE" ]; then
@@ -225,7 +266,7 @@ else
     case $CHOICE in
         1) run_vcds "RUN" ;;
         2) run_vcds "SETUP" ;;
-        3) rm -f "$IMG_FILE"; echo "Disk smazan. Restartuj skript pro novou instalaci."; exit 0 ;;
+        3) rm -f "$IMG_FILE"; echo "Disk smazan. Restartuj prikaz vcds pro novou instalaci."; exit 0 ;;
         4) uninstall ;;
         *) echo "Neplatna volba."; exit 1 ;;
     esac
