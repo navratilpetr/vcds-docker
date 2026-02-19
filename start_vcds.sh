@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # =================================================================
-# VCDS Docker Starter - Interaktivni pruvodce (v2.2 - sudo fix)
+# VCDS Docker Starter - Interaktivni pruvodce (v2.3 - dir fix)
 # =================================================================
 
 # Autorestart pod sudo, pokud nespousti root
 if [ "$EUID" -ne 0 ]; then
     echo "Tento skript vyzaduje administratorska prava (sudo)."
-    # Stahneme skript do docasneho souboru, abychom ho mohli spustit pod sudo
+    # Stazeni skriptu do docasneho souboru pro spusteni pod sudo
     tmp_script="/tmp/start_vcds_root.sh"
     curl -fsSL https://raw.githubusercontent.com/navratilpetr/vcds-docker/refs/heads/main/start_vcds.sh > "$tmp_script"
     chmod +x "$tmp_script"
@@ -75,7 +75,6 @@ detect_cable() {
         V_ID=$(echo $USER_ID | cut -d: -f1)
         P_ID=$(echo $USER_ID | cut -d: -f2)
         
-        mkdir -p "$CONFIG_DIR"
         echo "VENDOR_ID=0x$V_ID" > "$CONF_FILE"
         echo "PRODUCT_ID=0x$P_ID" >> "$CONF_FILE"
         
@@ -92,7 +91,6 @@ detect_cable() {
 
 # Funkce pro vytvoreni install.bat
 create_install_bat() {
-    mkdir -p "$CONFIG_DIR"
     cat << 'EOF' > "$CONFIG_DIR/install.bat"
 @echo off
 :: Blokace Ross-Tech
@@ -161,11 +159,14 @@ echo "=========================================="
 
 if [ ! -f "$IMG_FILE" ]; then
     echo "STAV: Nova instalace"
+    # Vytvoreni slozek hned na zacatku
+    mkdir -p "$DATA_DIR" "$TRANSFER_DIR" "$CONFIG_DIR"
+    fix_permissions
+    
     check_system
     detect_cable
     create_install_bat
-    mkdir -p "$TRANSFER_DIR"
-    fix_permissions
+    
     echo ""
     echo "Nyni se spusti instalace Windows 7."
     echo "1. Pockej na plochu (cca 5-10 min)."
