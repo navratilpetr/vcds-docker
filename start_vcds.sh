@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =================================================================
-# VCDS Docker Starter - Interaktivni pruvodce (v2.5 - browser fix)
+# VCDS Docker Starter - Interaktivni pruvodce (v2.7 - Navod fix)
 # =================================================================
 
 # Autorestart pod sudo
@@ -98,6 +98,38 @@ schtasks /create /tn "VCDS_Kill_Gateway" /tr "cmd.exe /c %WINDIR%\kill_gw.bat" /
 :: Vypnuti Defenderu
 reg add "HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows Defender" /v DisableAntiSpyware /t REG_DWORD /d 1 /f
 route delete 0.0.0.0
+
+:: Nacteni navodu
+echo === NAVOD K INSTALACI VCDS === > C:\navod.txt
+echo 1. V Linuxu uloz instalacku VCDS do slozky 'vcds_transfer' ve tvem domovskem adresari (Home). >> C:\navod.txt
+echo 2. Tady ve Windows otevri slozku 'Shared' (Tento pocitac -^> Z: nebo Sit -^> host.lan). >> C:\navod.txt
+echo 3. Nainstaluj VCDS vcetne vsech ovladacu. >> C:\navod.txt
+echo 4. Po dokonceni instalace ZAVRI tento textovy soubor (krizkem). >> C:\navod.txt
+echo 5. Nasledne vyskoci okno, kde vyberes spousteci soubor VCDS. >> C:\navod.txt
+
+:: PowerShell skript pro rizeni startu (SETUP vs RUN)
+echo Start-Sleep -Seconds 5 > %WINDIR%\startup.ps1
+echo $Action = "RUN" >> %WINDIR%\startup.ps1
+echo if (Test-Path "\\host.lan\qemu\action.txt") { $Action = (Get-Content "\\host.lan\qemu\action.txt").Trim() } >> %WINDIR%\startup.ps1
+echo if (-Not (Test-Path "C:\vcds_path.txt")) { $Action = "SETUP" } >> %WINDIR%\startup.ps1
+echo if ($Action -eq "SETUP") { >> %WINDIR%\startup.ps1
+echo   Start-Process "notepad.exe" "C:\navod.txt" -Wait >> %WINDIR%\startup.ps1
+echo   Add-Type -AssemblyName System.Windows.Forms >> %WINDIR%\startup.ps1
+echo   $dlg = New-Object System.Windows.Forms.OpenFileDialog >> %WINDIR%\startup.ps1
+echo   $dlg.Filter = "Spustitelne soubory (*.exe)|*.exe" >> %WINDIR%\startup.ps1
+echo   $dlg.Title = "Vyber spousteci soubor VCDS" >> %WINDIR%\startup.ps1
+echo   $dlg.InitialDirectory = "C:\" >> %WINDIR%\startup.ps1
+echo   if ($dlg.ShowDialog() -eq 'OK') { $dlg.FileName ^| Out-File 'C:\vcds_path.txt' -Encoding ascii } >> %WINDIR%\startup.ps1
+echo   try { "RUN" ^| Out-File "\\host.lan\qemu\action.txt" -Encoding ascii } catch {} >> %WINDIR%\startup.ps1
+echo } else { >> %WINDIR%\startup.ps1
+echo   $exe = Get-Content "C:\vcds_path.txt" >> %WINDIR%\startup.ps1
+echo   Start-Process $exe >> %WINDIR%\startup.ps1
+echo } >> %WINDIR%\startup.ps1
+
+:: Registrace spousteciho skriptu po startu Windows
+set STARTUP_DIR="%ALLUSERSPROFILE%\Microsoft\Windows\Start Menu\Programs\Startup"
+echo powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File %WINDIR%\startup.ps1 > %STARTUP_DIR%\vcds_startup.bat
+
 EOF
     fix_permissions
 }
@@ -115,13 +147,17 @@ wait_and_open_browser() {
 }
 
 run_vcds() {
+    local ACTION=$1
+    echo "$ACTION" > "$TRANSFER_DIR/action.txt"
+    fix_permissions
+
     if [ ! -f "$CONF_FILE" ]; then
         echo "Chybi konfigurace kabelu!"
         detect_cable
     fi
     source "$CONF_FILE"
     
-    echo "Spoustim VCDS ve Windows..."
+    echo "Spoustim VCDS ve Windows (Rezim: $ACTION)..."
     wait_and_open_browser
     
     docker run -it --rm --name vcds_win7 \
@@ -171,21 +207,20 @@ if [ ! -f "$IMG_FILE" ]; then
     echo ""
     echo "Nyni se spusti instalace Windows 7."
     echo "1. Pockej na plochu (cca 5-10 min)."
-    echo "2. Stahni VCDS a dej ho do slozky vcds_transfer u tebe v Home."
-    echo "3. Ve Windows otevri 'Shared', nainstaluj VCDS a pouzivej."
     echo ""
     read -p "Stiskni [ENTER] pro zahajeni..."
-    run_vcds
+    run_vcds "SETUP"
 else
     echo "STAV: System je jiz nainstalovan."
     echo "1) Spustit VCDS"
-    echo "2) Aktualizovat (otevrit Windows)"
+    echo "2) Aktualizovat (otevrit pruvodce)"
     echo "3) Reinstalace (smazat disk a zacit znovu)"
     echo "4) Odinstalovat (smazat vse)"
     read -p "Vyber moznost [1-4]: " CHOICE
 
     case $CHOICE in
-        1|2) run_vcds ;;
+        1) run_vcds "RUN" ;;
+        2) run_vcds "SETUP" ;;
         3) rm -f "$IMG_FILE"; echo "Disk smazan. Restartuj skript pro novou instalaci."; exit 0 ;;
         4) uninstall ;;
         *) echo "Neplatna volba."; exit 1 ;;
