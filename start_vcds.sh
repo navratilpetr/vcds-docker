@@ -1,15 +1,30 @@
 #!/bin/bash
 
 # =================================================================
-# VCDS Docker Starter - Interaktivni pruvodce
+# VCDS Docker Starter - Interaktivni pruvodce (v2.0 - sudo ready)
 # =================================================================
 
+# Autorestart pod sudo, pokud nespousti root
+if [ "$EUID" -ne 0 ]; then
+  echo "Tento skript vyzaduje administratorska prava (sudo)."
+  exec sudo bash "$0" "$@"
+fi
+
+# Zjisteni puvodniho uzivatele pro spravne nastaveni cest
+REAL_USER=${SUDO_USER:-$USER}
+REAL_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
+
 # Konfigurace cest
-DATA_DIR="${HOME}/vcds_data"
-TRANSFER_DIR="${HOME}/vcds_transfer"
-CONFIG_DIR="${HOME}/vcds_config"
+DATA_DIR="${REAL_HOME}/vcds_data"
+TRANSFER_DIR="${REAL_HOME}/vcds_transfer"
+CONFIG_DIR="${REAL_HOME}/vcds_config"
 CONF_FILE="$CONFIG_DIR/settings.conf"
 IMG_FILE="$DATA_DIR/data.img"
+
+# Funkce pro nastaveni spravnych prav souboru
+fix_permissions() {
+    chown -R "$REAL_USER:$REAL_USER" "$DATA_DIR" "$TRANSFER_DIR" "$CONFIG_DIR"
+}
 
 # Funkce pro kontrolu prerekvizit
 check_system() {
@@ -23,7 +38,7 @@ check_system() {
 
     # KVM
     if [ ! -e /dev/kvm ]; then
-        echo "CHYBA: Virtualizace (KVM) neni povolena v BIOSu nebo chybi modul!"
+        echo "CHYBA: Virtualizace (KVM) neni povolena nebo chybi modul!"
         exit 1
     fi
 
@@ -62,6 +77,7 @@ detect_cable() {
         echo "SUBSYSTEM==\"usb\", ATTR{idVendor}==\"$V_ID\", ATTR{idProduct}==\"$P_ID\", MODE=\"0666\"" > /etc/udev/rules.d/99-vcds.rules
         udevadm control --reload-rules && udevadm trigger
         echo "Kabel ulozen: $USER_ID"
+        fix_permissions
     else
         echo "Neplatny format ID! Zkus to znovu."
         exit 1
@@ -70,13 +86,14 @@ detect_cable() {
 
 # Funkce pro vytvoreni install.bat
 create_install_bat() {
+    mkdir -p "$CONFIG_DIR"
     cat << 'EOF' > "$CONFIG_DIR/install.bat"
 @echo off
 :: Blokace Ross-Tech
 echo 127.0.0.1 update.ross-tech.com >> %WINDIR%\System32\drivers\etc\hosts
 echo 127.0.0.1 www.ross-tech.com >> %WINDIR%\System32\drivers\etc\hosts
 
-:: Smazani brany po startu (prebiti DHCP)
+:: Smazani brany po startu
 echo @echo off > %WINDIR%\kill_gw.bat
 echo ping -n 15 127.0.0.1 ^> nul >> %WINDIR%\kill_gw.bat
 echo route delete 0.0.0.0 >> %WINDIR%\kill_gw.bat
@@ -88,11 +105,17 @@ schtasks /create /tn "VCDS_Kill_Gateway" /tr "cmd.exe /c %WINDIR%\kill_gw.bat" /
 reg add "HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows Defender" /v DisableAntiSpyware /t REG_DWORD /d 1 /f
 route delete 0.0.0.0
 EOF
+    fix_permissions
 }
 
 # Funkce pro spusteni Dockeru
 run_vcds() {
+    if [ ! -f "$CONF_FILE" ]; then
+        echo "Chybi konfigurace kabelu!"
+        detect_cable
+    fi
     source "$CONF_FILE"
+    
     echo "Spoustim VCDS ve Windows..."
     docker run -it --rm --name vcds_win7 \
       --device /dev/net/tun --cap-add NET_ADMIN \
@@ -136,6 +159,7 @@ if [ ! -f "$IMG_FILE" ]; then
     detect_cable
     create_install_bat
     mkdir -p "$TRANSFER_DIR"
+    fix_permissions
     echo ""
     echo "Nyni se spusti instalace Windows 7."
     echo "1. Pockej na plochu (cca 5-10 min)."
@@ -154,7 +178,7 @@ else
 
     case $CHOICE in
         1|2) run_vcds ;;
-        3) rm -f "$IMG_FILE"; echo "Restartuj skript."; exit 0 ;;
+        3) rm -f "$IMG_FILE"; echo "Disk smazan. Restartuj skript pro novou instalaci."; exit 0 ;;
         4) uninstall ;;
         *) echo "Neplatna volba."; exit 1 ;;
     esac
