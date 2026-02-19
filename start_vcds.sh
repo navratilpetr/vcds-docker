@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # =================================================================
-# VCDS Docker Starter (v2.12 - Working Dir fix)
+# VCDS Docker Starter (v2.13 - Re-detect cable)
 # =================================================================
 
-CURRENT_VERSION="2.12"
+CURRENT_VERSION="2.13"
 REPO_URL="https://raw.githubusercontent.com/navratilpetr/vcds-docker/refs/heads/main/start_vcds.sh"
 LOCAL_BIN="/usr/local/bin/vcds"
 
@@ -262,13 +262,15 @@ else
     echo "2) Aktualizovat (otevrit pruvodce)"
     echo "3) Reinstalace (smazat disk a zacit znovu)"
     echo "4) Odinstalovat (smazat vse)"
-    read -p "Vyber moznost [1-4]: " CHOICE
+    echo "5) Zmenit/Detekovat jiny kabel"
+    read -p "Vyber moznost [1-5]: " CHOICE
 
     case $CHOICE in
         1) run_vcds "RUN" ;;
         2) run_vcds "SETUP" ;;
         3) rm -f "$IMG_FILE"; echo "Disk smazan. Restartuj prikaz vcds pro novou instalaci."; exit 0 ;;
         4) uninstall ;;
+        5) detect_cable; echo "Novy kabel nastaven. Spust vcds znovu pro start."; exit 0 ;;
         *) echo "Neplatna volba."; exit 1 ;;
     esac
 fi
