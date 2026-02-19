@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =================================================================
-# VCDS Docker Starter - Interaktivni pruvodce (v2.8 - Shared logic)
+# VCDS Docker Starter - Interaktivni pruvodce (v2.9 - Path fix)
 # =================================================================
 
 # Autorestart pod sudo
@@ -101,13 +101,12 @@ route delete 0.0.0.0
 set STARTUP_DIR="%ALLUSERSPROFILE%\Microsoft\Windows\Start Menu\Programs\Startup"
 echo @echo off > %STARTUP_DIR%\vcds_launcher.bat
 echo timeout /t 5 /nobreak ^> nul >> %STARTUP_DIR%\vcds_launcher.bat
-echo powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File \\host.lan\qemu\startup.ps1 >> %STARTUP_DIR%\vcds_launcher.bat
+echo powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File \\host.lan\Data\startup.ps1 >> %STARTUP_DIR%\vcds_launcher.bat
 EOF
     fix_permissions
 }
 
 create_shared_scripts() {
-    # Text navodu
     cat << 'EOF' > "$TRANSFER_DIR/navod.txt"
 === NAVOD K INSTALACI VCDS === 
 1. V Linuxu uloz instalacku VCDS do slozky 'vcds_transfer' ve tvem domovskem adresari (Home).
@@ -117,21 +116,20 @@ create_shared_scripts() {
 5. Nasledne vyskoci okno, kde vyberes spousteci soubor VCDS.
 EOF
 
-    # PowerShell logika spoustena zvenku
     cat << 'EOF' > "$TRANSFER_DIR/startup.ps1"
 $Action = "RUN"
-if (Test-Path "\\host.lan\qemu\action.txt") { $Action = (Get-Content "\\host.lan\qemu\action.txt").Trim() }
+if (Test-Path "\\host.lan\Data\action.txt") { $Action = (Get-Content "\\host.lan\Data\action.txt").Trim() }
 if (-Not (Test-Path "C:\vcds_path.txt")) { $Action = "SETUP" }
 
 if ($Action -eq "SETUP") {
-  Start-Process "notepad.exe" "\\host.lan\qemu\navod.txt" -Wait
+  Start-Process "notepad.exe" "\\host.lan\Data\navod.txt" -Wait
   Add-Type -AssemblyName System.Windows.Forms
   $dlg = New-Object System.Windows.Forms.OpenFileDialog
   $dlg.Filter = "Spustitelne soubory (*.exe)|*.exe"
   $dlg.Title = "Vyber spousteci soubor VCDS"
   $dlg.InitialDirectory = "C:\"
   if ($dlg.ShowDialog() -eq 'OK') { $dlg.FileName | Out-File 'C:\vcds_path.txt' -Encoding ascii }
-  try { "RUN" | Out-File "\\host.lan\qemu\action.txt" -Encoding ascii } catch {}
+  try { "RUN" | Out-File "\\host.lan\Data\action.txt" -Encoding ascii } catch {}
 } else {
   if (Test-Path "C:\vcds_path.txt") {
       $exe = Get-Content "C:\vcds_path.txt"
