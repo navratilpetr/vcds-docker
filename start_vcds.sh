@@ -1,39 +1,33 @@
 #!/bin/bash
 
 # =================================================================
-# VCDS Docker Starter - Interaktivni pruvodce (v2.4 - auto browser)
+# VCDS Docker Starter - Interaktivni pruvodce (v2.5 - browser fix)
 # =================================================================
 
-# Autorestart pod sudo, pokud nespousti root
+# Autorestart pod sudo
 if [ "$EUID" -ne 0 ]; then
     echo "Tento skript vyzaduje administratorska prava (sudo)."
-    # Stazeni skriptu do docasneho souboru pro spusteni pod sudo
     tmp_script="/tmp/start_vcds_root.sh"
     curl -fsSL https://raw.githubusercontent.com/navratilpetr/vcds-docker/refs/heads/main/start_vcds.sh > "$tmp_script"
     chmod +x "$tmp_script"
-    # Zachovani promennych prostredi pro grafiku
-    sudo env DISPLAY="$DISPLAY" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" "$tmp_script" "$@"
+    sudo env DISPLAY="$DISPLAY" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" "$tmp_script" "$@"
     rm "$tmp_script"
     exit 0
 fi
 
-# Zjisteni puvodniho uzivatele pro spravne nastaveni cest
 REAL_USER=${SUDO_USER:-$USER}
 REAL_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
 
-# Konfigurace cest
 DATA_DIR="${REAL_HOME}/vcds_data"
 TRANSFER_DIR="${REAL_HOME}/vcds_transfer"
 CONFIG_DIR="${REAL_HOME}/vcds_config"
 CONF_FILE="$CONFIG_DIR/settings.conf"
 IMG_FILE="$DATA_DIR/data.img"
 
-# Funkce pro nastaveni spravnych prav souboru
 fix_permissions() {
     chown -R "$REAL_USER:$REAL_USER" "$DATA_DIR" "$TRANSFER_DIR" "$CONFIG_DIR"
 }
 
-# Funkce pro kontrolu prerekvizit
 check_system() {
     echo "--- Kontrola systemu ---"
     
@@ -54,7 +48,6 @@ check_system() {
     echo "System: OK"
 }
 
-# Funkce pro detekci kabelu
 detect_cable() {
     echo ""
     echo "--- Detekce VCDS kabelu ---"
@@ -87,7 +80,6 @@ detect_cable() {
     fi
 }
 
-# Funkce pro vytvoreni install.bat
 create_install_bat() {
     cat << 'EOF' > "$CONFIG_DIR/install.bat"
 @echo off
@@ -110,19 +102,18 @@ EOF
     fix_permissions
 }
 
-# Funkce pro automaticke otevreni prohlizece
 wait_and_open_browser() {
     (
-        # Cekani na vytvoreni kontejneru
         until docker inspect vcds_win7 &> /dev/null; do sleep 1; done
-        # Sledovani logu do nalezeni fraze
-        docker logs -f vcds_win7 2>&1 | grep -q -m 1 "Windows started successfully"
-        # Spusteni prohlizece pod puvodnim uzivatelem
-        sudo -u "$REAL_USER" env DISPLAY="${DISPLAY:-:0}" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" xdg-open "http://127.0.0.1:8006/" &> /dev/null
+        
+        until docker logs vcds_win7 2>&1 | grep -q "Windows started successfully"; do
+            sleep 2
+        done
+        
+        sudo -u "$REAL_USER" env DISPLAY="${DISPLAY:-:0}" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" XDG_RUNTIME_DIR="/run/user/$(id -u "$REAL_USER")" xdg-open "http://127.0.0.1:8006/" &> /dev/null
     ) &
 }
 
-# Funkce pro spusteni Dockeru
 run_vcds() {
     if [ ! -f "$CONF_FILE" ]; then
         echo "Chybi konfigurace kabelu!"
@@ -145,7 +136,6 @@ run_vcds() {
       dockurr/windows
 }
 
-# Funkce pro odinstalaci
 uninstall() {
     echo "--- ODINSTALACE ---"
     read -p "Opravdu smazat vsechna data VCDS? [y/N]: " CONFIRM
