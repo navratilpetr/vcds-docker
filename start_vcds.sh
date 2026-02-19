@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # =================================================================
-# VCDS Docker Starter (v2.28 - RDP Password NLA fix)
+# VCDS Docker Starter (v2.29 - RDP Kerberos fallback fix)
 # =================================================================
 
-CURRENT_VERSION="2.28"
+CURRENT_VERSION="2.29"
 REPO_URL="https://raw.githubusercontent.com/navratilpetr/vcds-docker/refs/heads/main/start_vcds.sh"
 LOCAL_BIN="/usr/local/bin/vcds"
 
@@ -262,9 +262,11 @@ run_vcds() {
         if [ "$RDP_CMD" == "xfreerdp3" ]; then
             RDP_ARGS+=("/app:program:||$VCDS_PATH")
             RDP_ARGS+=("/tls:seclevel:0")
+            RDP_ARGS+=("/auth-pkg-list:!kerberos")
         else
             RDP_ARGS+=("/app:||$VCDS_PATH")
             RDP_ARGS+=("/tls-seclevel:0")
+            RDP_ARGS+=("/sec:nla")
         fi
 
         echo "Spoustim VCDS (pouziva se $RDP_CMD)..."
