@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =================================================================
-# VCDS Docker Starter - Interaktivni pruvodce (v2.3 - dir fix)
+# VCDS Docker Starter - Interaktivni pruvodce (v2.4 - auto browser)
 # =================================================================
 
 # Autorestart pod sudo, pokud nespousti root
@@ -11,7 +11,8 @@ if [ "$EUID" -ne 0 ]; then
     tmp_script="/tmp/start_vcds_root.sh"
     curl -fsSL https://raw.githubusercontent.com/navratilpetr/vcds-docker/refs/heads/main/start_vcds.sh > "$tmp_script"
     chmod +x "$tmp_script"
-    sudo "$tmp_script" "$@"
+    # Zachovani promennych prostredi pro grafiku
+    sudo env DISPLAY="$DISPLAY" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" "$tmp_script" "$@"
     rm "$tmp_script"
     exit 0
 fi
@@ -36,19 +37,16 @@ fix_permissions() {
 check_system() {
     echo "--- Kontrola systemu ---"
     
-    # Docker
     if ! command -v docker &> /dev/null; then
         echo "CHYBA: Docker neni nainstalovan!"
         exit 1
     fi
 
-    # KVM
     if [ ! -e /dev/kvm ]; then
         echo "CHYBA: Virtualizace (KVM) neni povolena nebo chybi modul!"
         exit 1
     fi
 
-    # TUN modul
     if [ ! -e /dev/net/tun ]; then
         modprobe tun || { echo "CHYBA: Nelze zavest modul tun!"; exit 1; }
     fi
@@ -112,6 +110,18 @@ EOF
     fix_permissions
 }
 
+# Funkce pro automaticke otevreni prohlizece
+wait_and_open_browser() {
+    (
+        # Cekani na vytvoreni kontejneru
+        until docker inspect vcds_win7 &> /dev/null; do sleep 1; done
+        # Sledovani logu do nalezeni fraze
+        docker logs -f vcds_win7 2>&1 | grep -q -m 1 "Windows started successfully"
+        # Spusteni prohlizece pod puvodnim uzivatelem
+        sudo -u "$REAL_USER" env DISPLAY="${DISPLAY:-:0}" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" xdg-open "http://127.0.0.1:8006/" &> /dev/null
+    ) &
+}
+
 # Funkce pro spusteni Dockeru
 run_vcds() {
     if [ ! -f "$CONF_FILE" ]; then
@@ -121,6 +131,8 @@ run_vcds() {
     source "$CONF_FILE"
     
     echo "Spoustim VCDS ve Windows..."
+    wait_and_open_browser
+    
     docker run -it --rm --name vcds_win7 \
       --device /dev/net/tun --cap-add NET_ADMIN \
       --device /dev/bus/usb --device /dev/kvm \
@@ -159,7 +171,6 @@ echo "=========================================="
 
 if [ ! -f "$IMG_FILE" ]; then
     echo "STAV: Nova instalace"
-    # Vytvoreni slozek hned na zacatku
     mkdir -p "$DATA_DIR" "$TRANSFER_DIR" "$CONFIG_DIR"
     fix_permissions
     
