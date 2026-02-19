@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # =================================================================
-# VCDS Docker Starter (v2.25 - RDP TLS and Array fix)
+# VCDS Docker Starter (v2.26 - Disable NLA/Kerberos)
 # =================================================================
 
-CURRENT_VERSION="2.25"
+CURRENT_VERSION="2.26"
 REPO_URL="https://raw.githubusercontent.com/navratilpetr/vcds-docker/refs/heads/main/start_vcds.sh"
 LOCAL_BIN="/usr/local/bin/vcds"
 
@@ -247,7 +247,6 @@ run_vcds() {
         until bash -c 'echo > /dev/tcp/127.0.0.1/33890' 2>/dev/null; do sleep 2; done
         sleep 10
         
-        # Bezpecne predani argumentu pres pole pro zachovani mezer
         local RDP_ARGS=(
             "/v:127.0.0.1:33890"
             "/u:docker"
@@ -255,6 +254,9 @@ run_vcds() {
             "/cert:ignore"
             "+clipboard"
             "/dynamic-resolution"
+            "-nla"
+            "-ext"
+            "/sec:rdp"
         )
 
         if [ "$RDP_CMD" == "xfreerdp3" ]; then
