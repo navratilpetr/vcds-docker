@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # =================================================================
-# VCDS Docker Starter (v2.20 - xfreerdp3 Arch Linux fix)
+# VCDS Docker Starter (v2.21 - Fix Recovery Loop & Stop Timeout)
 # =================================================================
 
-CURRENT_VERSION="2.20"
+CURRENT_VERSION="2.21"
 REPO_URL="https://raw.githubusercontent.com/navratilpetr/vcds-docker/refs/heads/main/start_vcds.sh"
 LOCAL_BIN="/usr/local/bin/vcds"
 
@@ -121,6 +121,9 @@ reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v LimitBlankPasswordUse /t 
 reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Terminal Server\TSAppAllowList" /v fDisabledAllowList /t REG_DWORD /d 1 /f
 route delete 0.0.0.0
 
+bcdedit /set {default} recoveryenabled No
+bcdedit /set {default} bootstatuspolicy ignoreallfailures
+
 set STARTUP_DIR="%ALLUSERSPROFILE%\Microsoft\Windows\Start Menu\Programs\Startup"
 echo @echo off > %STARTUP_DIR%\vcds_launcher.bat
 echo timeout /t 5 /nobreak ^> nul >> %STARTUP_DIR%\vcds_launcher.bat
@@ -222,7 +225,7 @@ run_vcds() {
     source "$CONF_FILE"
     
     echo "Startuji kontejner..."
-    docker run -d --rm --name vcds_win7 \
+    docker run -d --rm --name vcds_win7 --stop-timeout 120 \
       --device /dev/net/tun --cap-add NET_ADMIN \
       --device /dev/bus/usb --device /dev/kvm \
       -p 8006:8006 -p 33890:3389 \
@@ -248,7 +251,7 @@ run_vcds() {
         echo "Spoustim VCDS (pouziva se $RDP_CMD)..."
         sudo -u "$REAL_USER" env DISPLAY="${DISPLAY:-:0}" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" XDG_RUNTIME_DIR="/run/user/$(id -u "$REAL_USER")" $RDP_CMD /v:127.0.0.1:33890 /u:docker /p:"" /cert:ignore /app:"||$VCDS_PATH" +clipboard /dynamic-resolution &> /dev/null
         
-        echo "Ukoncuji..."
+        echo "Ukoncuji (cekej na spravne vypnuti Windows)..."
         docker stop vcds_win7 &> /dev/null
     else
         echo "Cekam na Windows..."
