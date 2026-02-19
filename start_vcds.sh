@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # =================================================================
-# VCDS Docker Starter (v2.26 - Disable NLA/Kerberos)
+# VCDS Docker Starter (v2.27 - xfreerdp3 sec:rdp fix)
 # =================================================================
 
-CURRENT_VERSION="2.26"
+CURRENT_VERSION="2.27"
 REPO_URL="https://raw.githubusercontent.com/navratilpetr/vcds-docker/refs/heads/main/start_vcds.sh"
 LOCAL_BIN="/usr/local/bin/vcds"
 
@@ -254,8 +254,6 @@ run_vcds() {
             "/cert:ignore"
             "+clipboard"
             "/dynamic-resolution"
-            "-nla"
-            "-ext"
             "/sec:rdp"
         )
 
@@ -263,6 +261,8 @@ run_vcds() {
             RDP_ARGS+=("/app:program:||$VCDS_PATH")
             RDP_ARGS+=("/tls:seclevel:0")
         else
+            RDP_ARGS+=("-nla")
+            RDP_ARGS+=("-ext")
             RDP_ARGS+=("/app:||$VCDS_PATH")
             RDP_ARGS+=("/tls-seclevel:0")
         fi
