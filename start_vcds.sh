@@ -1,17 +1,15 @@
 #!/bin/bash
 
 # =================================================================
-# VCDS Docker Starter (v2.13 - Re-detect cable)
+# VCDS Docker Starter (v2.14 - Desktop Shortcut)
 # =================================================================
 
-CURRENT_VERSION="2.13"
+CURRENT_VERSION="2.14"
 REPO_URL="https://raw.githubusercontent.com/navratilpetr/vcds-docker/refs/heads/main/start_vcds.sh"
 LOCAL_BIN="/usr/local/bin/vcds"
 
 # Autorestart pod sudo a lokani instalace
 if [ "$EUID" -ne 0 ]; then
-    echo "Tento skript vyzaduje administratorska prava."
-    # Pokud neni soubor fyzicky na disku
     if [[ "$0" == "bash" || "$0" == *"curl"* || ! -f "$0" ]]; then
         tmp_script="/tmp/start_vcds_root.sh"
         curl -fsSL "$REPO_URL" > "$tmp_script"
@@ -20,7 +18,6 @@ if [ "$EUID" -ne 0 ]; then
         rm "$tmp_script"
         exit 0
     else
-        # Spusteno lokalne z disku
         exec sudo env DISPLAY="$DISPLAY" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" "$0" "$@"
     fi
 fi
@@ -178,6 +175,36 @@ EOF
     fix_permissions
 }
 
+create_shortcut() {
+    local app_dir="$REAL_HOME/.local/share/applications"
+    local desk_dir_cs="$REAL_HOME/Plocha"
+    local desk_dir_en="$REAL_HOME/Desktop"
+    
+    mkdir -p "$app_dir"
+    cat << 'EOF' > "$app_dir/vcds.desktop"
+[Desktop Entry]
+Name=VCDS
+Comment=VCDS diagnostika v Dockeru
+Exec=/usr/local/bin/vcds
+Icon=utilities-terminal
+Terminal=true
+Type=Application
+Categories=Utility;
+EOF
+    chown "$REAL_USER:$REAL_USER" "$app_dir/vcds.desktop"
+
+    if [ -d "$desk_dir_cs" ]; then
+        cp "$app_dir/vcds.desktop" "$desk_dir_cs/"
+        chown "$REAL_USER:$REAL_USER" "$desk_dir_cs/vcds.desktop"
+        chmod +x "$desk_dir_cs/vcds.desktop"
+    elif [ -d "$desk_dir_en" ]; then
+        cp "$app_dir/vcds.desktop" "$desk_dir_en/"
+        chown "$REAL_USER:$REAL_USER" "$desk_dir_en/vcds.desktop"
+        chmod +x "$desk_dir_en/vcds.desktop"
+    fi
+    echo "Zastupce byl vytvoren."
+}
+
 wait_and_open_browser() {
     (
         until docker inspect vcds_win7 &> /dev/null; do sleep 1; done
@@ -224,7 +251,7 @@ uninstall() {
         rm -rf "$DATA_DIR" "$TRANSFER_DIR" "$CONFIG_DIR"
         rm -f /etc/udev/rules.d/99-vcds.rules
         udevadm control --reload-rules
-        rm -f "$LOCAL_BIN"
+        rm -f "$LOCAL_BIN" "$REAL_HOME/.local/share/applications/vcds.desktop" "$REAL_HOME/Plocha/vcds.desktop" "$REAL_HOME/Desktop/vcds.desktop"
         echo "Soubory smazany."
         read -p "Chces smazat i Docker image (cca 5GB)? [y/N]: " IMG_CONFIRM
         [[ $IMG_CONFIRM == "y" ]] && docker rmi dockurr/windows
@@ -249,6 +276,7 @@ if [ ! -f "$IMG_FILE" ]; then
     check_system
     detect_cable
     create_install_bat
+    create_shortcut
     
     echo ""
     echo "Nyni se spusti instalace Windows 7."
@@ -263,7 +291,8 @@ else
     echo "3) Reinstalace (smazat disk a zacit znovu)"
     echo "4) Odinstalovat (smazat vse)"
     echo "5) Zmenit/Detekovat jiny kabel"
-    read -p "Vyber moznost [1-5]: " CHOICE
+    echo "6) Vytvorit zastupce na plochu"
+    read -p "Vyber moznost [1-6]: " CHOICE
 
     case $CHOICE in
         1) run_vcds "RUN" ;;
@@ -271,6 +300,7 @@ else
         3) rm -f "$IMG_FILE"; echo "Disk smazan. Restartuj prikaz vcds pro novou instalaci."; exit 0 ;;
         4) uninstall ;;
         5) detect_cable; echo "Novy kabel nastaven. Spust vcds znovu pro start."; exit 0 ;;
+        6) create_shortcut; exit 0 ;;
         *) echo "Neplatna volba."; exit 1 ;;
     esac
 fi
