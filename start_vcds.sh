@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =================================================================
-# VCDS Docker Starter - Interaktivni pruvodce (v2.7 - Navod fix)
+# VCDS Docker Starter - Interaktivni pruvodce (v2.8 - Shared logic)
 # =================================================================
 
 # Autorestart pod sudo
@@ -91,45 +91,53 @@ echo 127.0.0.1 www.ross-tech.com >> %WINDIR%\System32\drivers\etc\hosts
 echo @echo off > %WINDIR%\kill_gw.bat
 echo ping -n 15 127.0.0.1 ^> nul >> %WINDIR%\kill_gw.bat
 echo route delete 0.0.0.0 >> %WINDIR%\kill_gw.bat
-
-:: Registrace do planovace
 schtasks /create /tn "VCDS_Kill_Gateway" /tr "cmd.exe /c %WINDIR%\kill_gw.bat" /sc onstart /ru SYSTEM /rl HIGHEST /f
 
 :: Vypnuti Defenderu
 reg add "HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows Defender" /v DisableAntiSpyware /t REG_DWORD /d 1 /f
 route delete 0.0.0.0
 
-:: Nacteni navodu
-echo === NAVOD K INSTALACI VCDS === > C:\navod.txt
-echo 1. V Linuxu uloz instalacku VCDS do slozky 'vcds_transfer' ve tvem domovskem adresari (Home). >> C:\navod.txt
-echo 2. Tady ve Windows otevri slozku 'Shared' (Tento pocitac -^> Z: nebo Sit -^> host.lan). >> C:\navod.txt
-echo 3. Nainstaluj VCDS vcetne vsech ovladacu. >> C:\navod.txt
-echo 4. Po dokonceni instalace ZAVRI tento textovy soubor (krizkem). >> C:\navod.txt
-echo 5. Nasledne vyskoci okno, kde vyberes spousteci soubor VCDS. >> C:\navod.txt
-
-:: PowerShell skript pro rizeni startu (SETUP vs RUN)
-echo Start-Sleep -Seconds 5 > %WINDIR%\startup.ps1
-echo $Action = "RUN" >> %WINDIR%\startup.ps1
-echo if (Test-Path "\\host.lan\qemu\action.txt") { $Action = (Get-Content "\\host.lan\qemu\action.txt").Trim() } >> %WINDIR%\startup.ps1
-echo if (-Not (Test-Path "C:\vcds_path.txt")) { $Action = "SETUP" } >> %WINDIR%\startup.ps1
-echo if ($Action -eq "SETUP") { >> %WINDIR%\startup.ps1
-echo   Start-Process "notepad.exe" "C:\navod.txt" -Wait >> %WINDIR%\startup.ps1
-echo   Add-Type -AssemblyName System.Windows.Forms >> %WINDIR%\startup.ps1
-echo   $dlg = New-Object System.Windows.Forms.OpenFileDialog >> %WINDIR%\startup.ps1
-echo   $dlg.Filter = "Spustitelne soubory (*.exe)|*.exe" >> %WINDIR%\startup.ps1
-echo   $dlg.Title = "Vyber spousteci soubor VCDS" >> %WINDIR%\startup.ps1
-echo   $dlg.InitialDirectory = "C:\" >> %WINDIR%\startup.ps1
-echo   if ($dlg.ShowDialog() -eq 'OK') { $dlg.FileName ^| Out-File 'C:\vcds_path.txt' -Encoding ascii } >> %WINDIR%\startup.ps1
-echo   try { "RUN" ^| Out-File "\\host.lan\qemu\action.txt" -Encoding ascii } catch {} >> %WINDIR%\startup.ps1
-echo } else { >> %WINDIR%\startup.ps1
-echo   $exe = Get-Content "C:\vcds_path.txt" >> %WINDIR%\startup.ps1
-echo   Start-Process $exe >> %WINDIR%\startup.ps1
-echo } >> %WINDIR%\startup.ps1
-
-:: Registrace spousteciho skriptu po startu Windows
+:: Vytvoreni zavadece po startu Windows
 set STARTUP_DIR="%ALLUSERSPROFILE%\Microsoft\Windows\Start Menu\Programs\Startup"
-echo powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File %WINDIR%\startup.ps1 > %STARTUP_DIR%\vcds_startup.bat
+echo @echo off > %STARTUP_DIR%\vcds_launcher.bat
+echo timeout /t 5 /nobreak ^> nul >> %STARTUP_DIR%\vcds_launcher.bat
+echo powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File \\host.lan\qemu\startup.ps1 >> %STARTUP_DIR%\vcds_launcher.bat
+EOF
+    fix_permissions
+}
 
+create_shared_scripts() {
+    # Text navodu
+    cat << 'EOF' > "$TRANSFER_DIR/navod.txt"
+=== NAVOD K INSTALACI VCDS === 
+1. V Linuxu uloz instalacku VCDS do slozky 'vcds_transfer' ve tvem domovskem adresari (Home).
+2. Tady ve Windows otevri slozku 'Shared' (Tento pocitac -> Z: nebo Sit -> host.lan). 
+3. Nainstaluj VCDS vcetne vsech ovladacu. 
+4. Po dokonceni instalace ZAVRI tento textovy soubor (krizkem). 
+5. Nasledne vyskoci okno, kde vyberes spousteci soubor VCDS.
+EOF
+
+    # PowerShell logika spoustena zvenku
+    cat << 'EOF' > "$TRANSFER_DIR/startup.ps1"
+$Action = "RUN"
+if (Test-Path "\\host.lan\qemu\action.txt") { $Action = (Get-Content "\\host.lan\qemu\action.txt").Trim() }
+if (-Not (Test-Path "C:\vcds_path.txt")) { $Action = "SETUP" }
+
+if ($Action -eq "SETUP") {
+  Start-Process "notepad.exe" "\\host.lan\qemu\navod.txt" -Wait
+  Add-Type -AssemblyName System.Windows.Forms
+  $dlg = New-Object System.Windows.Forms.OpenFileDialog
+  $dlg.Filter = "Spustitelne soubory (*.exe)|*.exe"
+  $dlg.Title = "Vyber spousteci soubor VCDS"
+  $dlg.InitialDirectory = "C:\"
+  if ($dlg.ShowDialog() -eq 'OK') { $dlg.FileName | Out-File 'C:\vcds_path.txt' -Encoding ascii }
+  try { "RUN" | Out-File "\\host.lan\qemu\action.txt" -Encoding ascii } catch {}
+} else {
+  if (Test-Path "C:\vcds_path.txt") {
+      $exe = Get-Content "C:\vcds_path.txt"
+      Start-Process $exe
+  }
+}
 EOF
     fix_permissions
 }
@@ -149,8 +157,8 @@ wait_and_open_browser() {
 run_vcds() {
     local ACTION=$1
     echo "$ACTION" > "$TRANSFER_DIR/action.txt"
-    fix_permissions
-
+    create_shared_scripts
+    
     if [ ! -f "$CONF_FILE" ]; then
         echo "Chybi konfigurace kabelu!"
         detect_cable
@@ -206,7 +214,7 @@ if [ ! -f "$IMG_FILE" ]; then
     
     echo ""
     echo "Nyni se spusti instalace Windows 7."
-    echo "1. Pockej na plochu (cca 5-10 min)."
+    echo "Pockej na plochu a otevreni navodu."
     echo ""
     read -p "Stiskni [ENTER] pro zahajeni..."
     run_vcds "SETUP"
