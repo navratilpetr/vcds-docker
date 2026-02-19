@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # =================================================================
-# VCDS Docker Starter (v2.23 - RDP Debug)
+# VCDS Docker Starter (v2.24 - xfreerdp3 app syntax fix)
 # =================================================================
 
-CURRENT_VERSION="2.23"
+CURRENT_VERSION="2.24"
 REPO_URL="https://raw.githubusercontent.com/navratilpetr/vcds-docker/refs/heads/main/start_vcds.sh"
 LOCAL_BIN="/usr/local/bin/vcds"
 
@@ -199,6 +199,7 @@ run_vcds() {
     local MODE=$1
     local ACTION="RUN"
     local RDP_CMD=""
+    local RDP_APP_ARG=""
     
     if [ "$MODE" == "SETUP" ]; then
         ACTION="SETUP"
@@ -247,13 +248,19 @@ run_vcds() {
         until bash -c 'echo > /dev/tcp/127.0.0.1/33890' 2>/dev/null; do sleep 2; done
         sleep 10
         
-        echo "=== LOG XFREERDP ==="
-        sudo -u "$REAL_USER" env DISPLAY="${DISPLAY:-:0}" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" XDG_RUNTIME_DIR="/run/user/$(id -u "$REAL_USER")" $RDP_CMD /v:127.0.0.1:33890 /u:docker /p:"" /cert:ignore /app:"||$VCDS_PATH" +clipboard /dynamic-resolution
+        # Formatovani argumentu podle verze xfreerdp
+        if [ "$RDP_CMD" == "xfreerdp3" ]; then
+            RDP_APP_ARG="/app:program:\"||$VCDS_PATH\""
+        else
+            RDP_APP_ARG="/app:\"||$VCDS_PATH\""
+        fi
+
+        echo "Spoustim VCDS (pouziva se $RDP_CMD)..."
+        sudo -u "$REAL_USER" env DISPLAY="${DISPLAY:-:0}" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" XDG_RUNTIME_DIR="/run/user/$(id -u "$REAL_USER")" $RDP_CMD /v:127.0.0.1:33890 /u:docker /p:"" /cert:ignore $RDP_APP_ARG +clipboard /dynamic-resolution
         local RDP_EXIT=$?
-        echo "=== KONEC LOGU (Exit code: $RDP_EXIT) ==="
         
         if [ $RDP_EXIT -ne 0 ]; then
-            read -p "RDP spadlo. Stiskni [ENTER] pro ukonceni..."
+            read -p "RDP ukonceno s chybou ($RDP_EXIT). Stiskni [ENTER]..."
         fi
         
         echo "Ukoncuji kontejner..."
