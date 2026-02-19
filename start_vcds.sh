@@ -1,13 +1,23 @@
 #!/bin/bash
 
 # =================================================================
-# VCDS Docker Starter - Interaktivni pruvodce (v2.0 - sudo ready)
+# VCDS Docker Starter - Interaktivni pruvodce (v2.1 - sudo fix)
 # =================================================================
 
 # Autorestart pod sudo, pokud nespousti root
 if [ "$EUID" -ne 0 ]; then
-  echo "Tento skript vyzaduje administratorska prava (sudo)."
-  exec sudo bash "$0" "$@"
+    echo "Tento skript vyzaduje administratorska prava (sudo)."
+    # Pokud byl skript spusten pres curl, musime ho nejdriv ulozit
+    if [[ "$0" == "bash" || "$0" == "/bin/bash" || "$0" == "/usr/bin/bash" ]]; then
+        tmp_script=$(mktemp)
+        curl -fsSL https://raw.githubusercontent.com/navratilpetr/vcds-docker/refs/heads/main/start_vcds.sh > "$tmp_script"
+        chmod +x "$tmp_script"
+        sudo "$tmp_script" "$@"
+        rm "$tmp_script"
+        exit 0
+    else
+        exec sudo "$0" "$@"
+    fi
 fi
 
 # Zjisteni puvodniho uzivatele pro spravne nastaveni cest
