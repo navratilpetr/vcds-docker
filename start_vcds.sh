@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # =================================================================
-# VCDS Docker Starter (v2.24 - xfreerdp3 app syntax fix)
+# VCDS Docker Starter (v2.25 - RDP TLS and Array fix)
 # =================================================================
 
-CURRENT_VERSION="2.24"
+CURRENT_VERSION="2.25"
 REPO_URL="https://raw.githubusercontent.com/navratilpetr/vcds-docker/refs/heads/main/start_vcds.sh"
 LOCAL_BIN="/usr/local/bin/vcds"
 
@@ -199,7 +199,6 @@ run_vcds() {
     local MODE=$1
     local ACTION="RUN"
     local RDP_CMD=""
-    local RDP_APP_ARG=""
     
     if [ "$MODE" == "SETUP" ]; then
         ACTION="SETUP"
@@ -248,15 +247,26 @@ run_vcds() {
         until bash -c 'echo > /dev/tcp/127.0.0.1/33890' 2>/dev/null; do sleep 2; done
         sleep 10
         
-        # Formatovani argumentu podle verze xfreerdp
+        # Bezpecne predani argumentu pres pole pro zachovani mezer
+        local RDP_ARGS=(
+            "/v:127.0.0.1:33890"
+            "/u:docker"
+            "/p:"
+            "/cert:ignore"
+            "+clipboard"
+            "/dynamic-resolution"
+        )
+
         if [ "$RDP_CMD" == "xfreerdp3" ]; then
-            RDP_APP_ARG="/app:program:\"||$VCDS_PATH\""
+            RDP_ARGS+=("/app:program:||$VCDS_PATH")
+            RDP_ARGS+=("/tls:seclevel:0")
         else
-            RDP_APP_ARG="/app:\"||$VCDS_PATH\""
+            RDP_ARGS+=("/app:||$VCDS_PATH")
+            RDP_ARGS+=("/tls-seclevel:0")
         fi
 
         echo "Spoustim VCDS (pouziva se $RDP_CMD)..."
-        sudo -u "$REAL_USER" env DISPLAY="${DISPLAY:-:0}" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" XDG_RUNTIME_DIR="/run/user/$(id -u "$REAL_USER")" $RDP_CMD /v:127.0.0.1:33890 /u:docker /p:"" /cert:ignore $RDP_APP_ARG +clipboard /dynamic-resolution
+        sudo -u "$REAL_USER" env DISPLAY="${DISPLAY:-:0}" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" XDG_RUNTIME_DIR="/run/user/$(id -u "$REAL_USER")" $RDP_CMD "${RDP_ARGS[@]}"
         local RDP_EXIT=$?
         
         if [ $RDP_EXIT -ne 0 ]; then
