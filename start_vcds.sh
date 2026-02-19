@@ -1,17 +1,17 @@
 #!/bin/bash
 
 # =================================================================
-# VCDS Docker Starter (v2.11 - Offline & Auto-update)
+# VCDS Docker Starter (v2.12 - Working Dir fix)
 # =================================================================
 
-CURRENT_VERSION="2.11"
+CURRENT_VERSION="2.12"
 REPO_URL="https://raw.githubusercontent.com/navratilpetr/vcds-docker/refs/heads/main/start_vcds.sh"
 LOCAL_BIN="/usr/local/bin/vcds"
 
 # Autorestart pod sudo a lokani instalace
 if [ "$EUID" -ne 0 ]; then
     echo "Tento skript vyzaduje administratorska prava."
-    # Pokud neni soubor fyzicky na disku (spusteno pres curl)
+    # Pokud neni soubor fyzicky na disku
     if [[ "$0" == "bash" || "$0" == *"curl"* || ! -f "$0" ]]; then
         tmp_script="/tmp/start_vcds_root.sh"
         curl -fsSL "$REPO_URL" > "$tmp_script"
@@ -20,7 +20,7 @@ if [ "$EUID" -ne 0 ]; then
         rm "$tmp_script"
         exit 0
     else
-        # Spusteno lokalne z disku (napr. prikaz vcds)
+        # Spusteno lokalne z disku
         exec sudo env DISPLAY="$DISPLAY" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" "$0" "$@"
     fi
 fi
@@ -170,7 +170,8 @@ if ($Action -eq "SETUP") {
 } else {
   if (Test-Path "C:\vcds_path.txt") {
       $exe = Get-Content "C:\vcds_path.txt"
-      Start-Process $exe
+      $dir = Split-Path -Parent $exe
+      Start-Process -FilePath $exe -WorkingDirectory $dir
   }
 }
 EOF
