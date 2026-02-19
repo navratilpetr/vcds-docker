@@ -1,12 +1,11 @@
 #!/bin/bash
 
 # =================================================================
-# VCDS Docker Starter - Interaktivni pruvodce (v2.9 - Path fix)
+# VCDS Docker Starter - Interaktivni pruvodce (v2.10 - CRLF & STA fix)
 # =================================================================
 
-# Autorestart pod sudo
 if [ "$EUID" -ne 0 ]; then
-    echo "Tento skript vyzaduje administratorska prava (sudo)."
+    echo "Tento skript vyzaduje administratorska prava."
     tmp_script="/tmp/start_vcds_root.sh"
     curl -fsSL https://raw.githubusercontent.com/navratilpetr/vcds-docker/refs/heads/main/start_vcds.sh > "$tmp_script"
     chmod +x "$tmp_script"
@@ -97,25 +96,20 @@ schtasks /create /tn "VCDS_Kill_Gateway" /tr "cmd.exe /c %WINDIR%\kill_gw.bat" /
 reg add "HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows Defender" /v DisableAntiSpyware /t REG_DWORD /d 1 /f
 route delete 0.0.0.0
 
-:: Vytvoreni zavadece po startu Windows
+:: Vytvoreni zavadece po startu Windows (s parametrem -sta)
 set STARTUP_DIR="%ALLUSERSPROFILE%\Microsoft\Windows\Start Menu\Programs\Startup"
 echo @echo off > %STARTUP_DIR%\vcds_launcher.bat
 echo timeout /t 5 /nobreak ^> nul >> %STARTUP_DIR%\vcds_launcher.bat
-echo powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File \\host.lan\Data\startup.ps1 >> %STARTUP_DIR%\vcds_launcher.bat
+echo powershell -sta -ExecutionPolicy Bypass -WindowStyle Hidden -File \\host.lan\Data\startup.ps1 >> %STARTUP_DIR%\vcds_launcher.bat
 EOF
     fix_permissions
 }
 
 create_shared_scripts() {
-    cat << 'EOF' > "$TRANSFER_DIR/navod.txt"
-=== NAVOD K INSTALACI VCDS === 
-1. V Linuxu uloz instalacku VCDS do slozky 'vcds_transfer' ve tvem domovskem adresari (Home).
-2. Tady ve Windows otevri slozku 'Shared' (Tento pocitac -> Z: nebo Sit -> host.lan). 
-3. Nainstaluj VCDS vcetne vsech ovladacu. 
-4. Po dokonceni instalace ZAVRI tento textovy soubor (krizkem). 
-5. Nasledne vyskoci okno, kde vyberes spousteci soubor VCDS.
-EOF
+    # Zapis s Windows konci radku (CRLF)
+    printf "=== NAVOD K INSTALACI VCDS ===\r\n1. V Linuxu uloz instalacku VCDS do slozky 'vcds_transfer' ve tvem domovskem adresari (Home).\r\n2. Tady ve Windows otevri slozku 'Shared' (Tento pocitac -> Z: nebo Sit -> host.lan).\r\n3. Nainstaluj VCDS vcetne vsech ovladacu.\r\n4. Po dokonceni instalace ZAVRI tento textovy soubor (krizkem).\r\n5. Nasledne vyskoci okno, kde vyberes spousteci soubor VCDS.\r\n" > "$TRANSFER_DIR/navod.txt"
 
+    # Robustnejsi PowerShell skript pro Win7 (PS 2.0)
     cat << 'EOF' > "$TRANSFER_DIR/startup.ps1"
 $Action = "RUN"
 if (Test-Path "\\host.lan\Data\action.txt") { $Action = (Get-Content "\\host.lan\Data\action.txt").Trim() }
@@ -123,12 +117,16 @@ if (-Not (Test-Path "C:\vcds_path.txt")) { $Action = "SETUP" }
 
 if ($Action -eq "SETUP") {
   Start-Process "notepad.exe" "\\host.lan\Data\navod.txt" -Wait
-  Add-Type -AssemblyName System.Windows.Forms
+  
+  [void][System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms")
   $dlg = New-Object System.Windows.Forms.OpenFileDialog
   $dlg.Filter = "Spustitelne soubory (*.exe)|*.exe"
   $dlg.Title = "Vyber spousteci soubor VCDS"
   $dlg.InitialDirectory = "C:\"
-  if ($dlg.ShowDialog() -eq 'OK') { $dlg.FileName | Out-File 'C:\vcds_path.txt' -Encoding ascii }
+  
+  if ($dlg.ShowDialog() -eq 'OK') { 
+      $dlg.FileName | Out-File 'C:\vcds_path.txt' -Encoding ascii 
+  }
   try { "RUN" | Out-File "\\host.lan\Data\action.txt" -Encoding ascii } catch {}
 } else {
   if (Test-Path "C:\vcds_path.txt") {
