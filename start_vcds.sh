@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # =================================================================
-# VCDS Docker Starter (v2.22 - Wait for WEB exit)
+# VCDS Docker Starter (v2.23 - RDP Debug)
 # =================================================================
 
-CURRENT_VERSION="2.22"
+CURRENT_VERSION="2.23"
 REPO_URL="https://raw.githubusercontent.com/navratilpetr/vcds-docker/refs/heads/main/start_vcds.sh"
 LOCAL_BIN="/usr/local/bin/vcds"
 
@@ -211,7 +211,6 @@ run_vcds() {
             RDP_CMD="xfreerdp"
         else
             echo "CHYBA: xfreerdp nebo xfreerdp3 neni nainstalovan!"
-            echo "Pro pouziti RDP rezimu doinstaluj: pacman -S freerdp"
             exit 1
         fi
     fi
@@ -244,14 +243,20 @@ run_vcds() {
             exit 1
         fi
         
-        echo "Cekam na RDP..."
+        echo "Cekam na RDP (10s)..."
         until bash -c 'echo > /dev/tcp/127.0.0.1/33890' 2>/dev/null; do sleep 2; done
-        sleep 5
+        sleep 10
         
-        echo "Spoustim VCDS (pouziva se $RDP_CMD)..."
-        sudo -u "$REAL_USER" env DISPLAY="${DISPLAY:-:0}" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" XDG_RUNTIME_DIR="/run/user/$(id -u "$REAL_USER")" $RDP_CMD /v:127.0.0.1:33890 /u:docker /p:"" /cert:ignore /app:"||$VCDS_PATH" +clipboard /dynamic-resolution &> /dev/null
+        echo "=== LOG XFREERDP ==="
+        sudo -u "$REAL_USER" env DISPLAY="${DISPLAY:-:0}" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" XDG_RUNTIME_DIR="/run/user/$(id -u "$REAL_USER")" $RDP_CMD /v:127.0.0.1:33890 /u:docker /p:"" /cert:ignore /app:"||$VCDS_PATH" +clipboard /dynamic-resolution
+        local RDP_EXIT=$?
+        echo "=== KONEC LOGU (Exit code: $RDP_EXIT) ==="
         
-        echo "Ukoncuji (cekej na spravne vypnuti Windows)..."
+        if [ $RDP_EXIT -ne 0 ]; then
+            read -p "RDP spadlo. Stiskni [ENTER] pro ukonceni..."
+        fi
+        
+        echo "Ukoncuji kontejner..."
         docker stop vcds_win7 &> /dev/null
     else
         echo "Cekam na Windows..."
@@ -260,7 +265,7 @@ run_vcds() {
         
         echo ""
         read -p "Po dokonceni prace stiskni [ENTER] pro vypnuti VCDS..."
-        echo "Ukoncuji (cekej na spravne vypnuti Windows)..."
+        echo "Ukoncuji kontejner..."
         docker stop vcds_win7 &> /dev/null
     fi
 }
