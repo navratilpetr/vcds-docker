@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # =================================================================
-# VCDS Docker Starter (v2.27 - xfreerdp3 sec:rdp fix)
+# VCDS Docker Starter (v2.28 - RDP Password NLA fix)
 # =================================================================
 
-CURRENT_VERSION="2.27"
+CURRENT_VERSION="2.28"
 REPO_URL="https://raw.githubusercontent.com/navratilpetr/vcds-docker/refs/heads/main/start_vcds.sh"
 LOCAL_BIN="/usr/local/bin/vcds"
 
@@ -117,12 +117,14 @@ echo route delete 0.0.0.0 >> %WINDIR%\kill_gw.bat
 schtasks /create /tn "VCDS_Kill_Gateway" /tr "cmd.exe /c %WINDIR%\kill_gw.bat" /sc onstart /ru SYSTEM /rl HIGHEST /f
 
 reg add "HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows Defender" /v DisableAntiSpyware /t REG_DWORD /d 1 /f
-reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v LimitBlankPasswordUse /t REG_DWORD /d 0 /f
 reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Terminal Server\TSAppAllowList" /v fDisabledAllowList /t REG_DWORD /d 1 /f
 route delete 0.0.0.0
 
 bcdedit /set {default} recoveryenabled No
 bcdedit /set {default} bootstatuspolicy ignoreallfailures
+
+net user docker vcds
+reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultPassword /t REG_SZ /d "vcds" /f
 
 set STARTUP_DIR="%ALLUSERSPROFILE%\Microsoft\Windows\Start Menu\Programs\Startup"
 echo @echo off > %STARTUP_DIR%\vcds_launcher.bat
@@ -136,8 +138,9 @@ create_shared_scripts() {
     printf "=== NAVOD K INSTALACI VCDS ===\r\n1. V Linuxu uloz instalacku VCDS do slozky 'vcds_transfer'.\r\n2. Ve Windows otevri slozku 'Shared'.\r\n3. Nainstaluj VCDS vcetne vsech ovladacu.\r\n4. Po dokonceni instalace ZAVRI tento soubor.\r\n5. Nasledne vyber spousteci soubor VCDS.\r\n" > "$TRANSFER_DIR/navod.txt"
 
     cat << 'EOF' > "$TRANSFER_DIR/startup.ps1"
-reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v LimitBlankPasswordUse /t REG_DWORD /d 0 /f
 reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Terminal Server\TSAppAllowList" /v fDisabledAllowList /t REG_DWORD /d 1 /f
+net user docker vcds
+reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultPassword /t REG_SZ /d "vcds" /f
 
 $Action = "RUN"
 if (Test-Path "\\host.lan\Data\action.txt") { $Action = (Get-Content "\\host.lan\Data\action.txt").Trim() }
@@ -243,26 +246,23 @@ run_vcds() {
             exit 1
         fi
         
-        echo "Cekam na RDP (10s)..."
+        echo "Cekam na aplikaci nastaveni a RDP server (10s)..."
         until bash -c 'echo > /dev/tcp/127.0.0.1/33890' 2>/dev/null; do sleep 2; done
         sleep 10
         
         local RDP_ARGS=(
             "/v:127.0.0.1:33890"
             "/u:docker"
-            "/p:"
+            "/p:vcds"
             "/cert:ignore"
             "+clipboard"
             "/dynamic-resolution"
-            "/sec:rdp"
         )
 
         if [ "$RDP_CMD" == "xfreerdp3" ]; then
             RDP_ARGS+=("/app:program:||$VCDS_PATH")
             RDP_ARGS+=("/tls:seclevel:0")
         else
-            RDP_ARGS+=("-nla")
-            RDP_ARGS+=("-ext")
             RDP_ARGS+=("/app:||$VCDS_PATH")
             RDP_ARGS+=("/tls-seclevel:0")
         fi
