@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # =================================================================
-# VCDS Docker Starter (v2.21 - Fix Recovery Loop & Stop Timeout)
+# VCDS Docker Starter (v2.22 - Wait for WEB exit)
 # =================================================================
 
-CURRENT_VERSION="2.21"
+CURRENT_VERSION="2.22"
 REPO_URL="https://raw.githubusercontent.com/navratilpetr/vcds-docker/refs/heads/main/start_vcds.sh"
 LOCAL_BIN="/usr/local/bin/vcds"
 
@@ -257,6 +257,11 @@ run_vcds() {
         echo "Cekam na Windows..."
         until docker logs vcds_win7 2>&1 | grep -q "Windows started successfully"; do sleep 2; done
         sudo -u "$REAL_USER" env DISPLAY="${DISPLAY:-:0}" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" XDG_RUNTIME_DIR="/run/user/$(id -u "$REAL_USER")" xdg-open "http://127.0.0.1:8006/" &> /dev/null
+        
+        echo ""
+        read -p "Po dokonceni prace stiskni [ENTER] pro vypnuti VCDS..."
+        echo "Ukoncuji (cekej na spravne vypnuti Windows)..."
+        docker stop vcds_win7 &> /dev/null
     fi
 }
 
