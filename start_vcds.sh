@@ -5,7 +5,7 @@
 # =================================================================
 
 CURRENT_MAJOR="3"
-CURRENT_MINOR="02"
+CURRENT_MINOR="03"
 REPO_URL="https://raw.githubusercontent.com/navratilpetr/vcds-docker/refs/heads/main/start_vcds.sh"
 LOCAL_BIN="/usr/local/bin/vcds"
 
@@ -144,7 +144,7 @@ create_shared_scripts() {
     printf "=== NAVOD K INSTALACI VCDS ===\r\n1. V Linuxu uloz instalacku a vcdsloader.exe do slozky 'vcds_transfer'.\r\n2. Tady ve Windows otevri slozku 'Shared'.\r\n3. Nainstaluj VCDS. DULEZITE: Instaluj vzdy primo na disk C: (napr. C:\\Ross-Tech\\VCDS).\r\n4. Zkopiruj vcdsloader.exe ze slozky Shared do slozky s nainstalovanym VCDS na disku C:.\r\n5. Po dokonceni ZAVRI tento soubor.\r\n6. Vyskoci okno, ve kterem vyberes ten zkopirovany vcdsloader.exe primo z disku C:.\r\n" > "$TRANSFER_DIR/navod.txt"
 
     cat << 'EOF' > "$TRANSFER_DIR/startup.ps1"
-# Cisty start s AutoLogon pro RDP kompatibilitu
+# Cisty start s AutoLogon
 net user docker vcds
 reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v AutoAdminLogon /t REG_SZ /d "1" /f
 reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultUserName /t REG_SZ /d "Docker" /f
@@ -192,9 +192,9 @@ if ($Action -eq "SETUP") {
       $batContent | Out-File "C:\run_vcds.bat" -Encoding ascii
 
       if ($Action -eq "RDP") {
-          Start-Process "$env:windir\System32\tsdiscon.exe"
-          Start-Sleep -Seconds 2
           "READY" | Out-File "\\host.lan\Data\status.txt" -Encoding ascii
+          Start-Sleep -Seconds 1
+          Start-Process "$env:windir\System32\logoff.exe"
       } else {
           Start-Process "C:\run_vcds.bat"
       }
@@ -292,7 +292,7 @@ run_vcds() {
         until grep -q "READY" "$TRANSFER_DIR/status.txt" 2>/dev/null; do sleep 1; done
         
         echo "Pripravuji RDP spojeni..."
-        sleep 3
+        sleep 4
         
         local RDP_ARGS=(
             "/v:127.0.0.1:33890"
@@ -301,12 +301,16 @@ run_vcds() {
             "/cert:ignore"
             "+clipboard"
             "/dynamic-resolution"
+            "/sec:rdp"
         )
 
         if [ "$RDP_CMD" == "xfreerdp3" ]; then
             RDP_ARGS+=("/app:program:||C:\run_vcds.bat")
+            RDP_ARGS+=("/tls:seclevel:0")
+            RDP_ARGS+=("/auth-pkg-list:!kerberos")
         else
             RDP_ARGS+=("/app:||C:\run_vcds.bat")
+            RDP_ARGS+=("/tls-seclevel:0")
         fi
 
         echo "Spoustim VCDS ($RDP_CMD)..."
