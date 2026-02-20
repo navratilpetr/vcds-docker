@@ -1,10 +1,11 @@
 #!/bin/bash
 
 # =================================================================
-# VCDS Docker Starter (v2.36 - UNC path pushd fix)
+# VCDS Docker Starter
 # =================================================================
 
-CURRENT_VERSION="2.36"
+CURRENT_MAJOR="3"
+CURRENT_MINOR="00"
 REPO_URL="https://raw.githubusercontent.com/navratilpetr/vcds-docker/refs/heads/main/start_vcds.sh"
 LOCAL_BIN="/usr/local/bin/vcds"
 
@@ -31,10 +32,25 @@ fi
 echo "Kontrola aktualizaci..."
 REMOTE_SCRIPT=$(curl -s -m 2 "$REPO_URL")
 if [ -n "$REMOTE_SCRIPT" ]; then
-    REMOTE_VERSION=$(echo "$REMOTE_SCRIPT" | grep -m 1 '^CURRENT_VERSION=' | cut -d'"' -f2)
-    if [[ "$REMOTE_VERSION" > "$CURRENT_VERSION" ]]; then
-        echo "Nalezena nova verze: $REMOTE_VERSION (soucasna: $CURRENT_VERSION)"
-        read -p "Chces aktualizovat? [y/N]: " UPDATE_CONFIRM
+    REM_MAJOR=$(echo "$REMOTE_SCRIPT" | grep -m 1 '^CURRENT_MAJOR=' | cut -d'"' -f2)
+    REM_MINOR=$(echo "$REMOTE_SCRIPT" | grep -m 1 '^CURRENT_MINOR=' | cut -d'"' -f2)
+    
+    if [[ "$REM_MAJOR" > "$CURRENT_MAJOR" ]]; then
+        echo "Nalezena nova HLAVNI verze: $REM_MAJOR.$REM_MINOR (soucasna: $CURRENT_MAJOR.$CURRENT_MINOR)"
+        echo "Tato aktualizace vyzaduje cistou instalaci Windows."
+        read -p "Chces aktualizovat a SMAZAT stara data? [y/N]: " UPDATE_CONFIRM
+        if [[ "$UPDATE_CONFIRM" == "y" ]]; then
+            echo "$REMOTE_SCRIPT" > "$LOCAL_BIN"
+            chmod +x "$LOCAL_BIN"
+            REAL_USER=${SUDO_USER:-$USER}
+            REAL_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
+            rm -f "${REAL_HOME}/vcds_data/data.img"
+            echo "Aktualizace dokoncena. Restartuji..."
+            exec "$LOCAL_BIN" "$@"
+        fi
+    elif [[ "$REM_MAJOR" == "$CURRENT_MAJOR" && "$REM_MINOR" > "$CURRENT_MINOR" ]]; then
+        echo "Nalezena nova mensi aktualizace: $REM_MAJOR.$REM_MINOR (soucasna: $CURRENT_MAJOR.$CURRENT_MINOR)"
+        read -p "Chces aktualizovat skript? [y/N]: " UPDATE_CONFIRM
         if [[ "$UPDATE_CONFIRM" == "y" ]]; then
             echo "$REMOTE_SCRIPT" > "$LOCAL_BIN"
             chmod +x "$LOCAL_BIN"
@@ -125,18 +141,21 @@ EOF
 }
 
 create_shared_scripts() {
-    printf "=== NAVOD K INSTALACI VCDS ===\r\n1. V Linuxu uloz instalacku VCDS do slozky 'vcds_transfer'.\r\n2. Ve Windows otevri slozku 'Shared'.\r\n3. Nainstaluj VCDS vcetne vsech ovladacu.\r\n4. Po dokonceni instalace ZAVRI tento soubor.\r\n5. Nasledne vyber spousteci soubor VCDS.\r\n" > "$TRANSFER_DIR/navod.txt"
+    cat << 'EOF' > "$TRANSFER_DIR/navod.txt"
+=== NAVOD K INSTALACI VCDS ===
+1. V Linuxu uloz instalacku a vcdsloader.exe do slozky 'vcds_transfer'.
+2. Tady ve Windows otevri slozku 'Shared'.
+3. Nainstaluj VCDS. DULEZITE: Instaluj vzdy primo na disk C: (napr. C:\Ross-Tech\VCDS).
+4. Zkopiruj vcdsloader.exe ze slozky Shared do slozky s nainstalovanym VCDS na disku C:.
+5. Po dokonceni ZAVRI tento soubor.
+6. Vyskoci okno, ve kterem vyberes ten zkopirovany vcdsloader.exe primo z disku C:.
+EOF
 
     cat << 'EOF' > "$TRANSFER_DIR/startup.ps1"
-net user docker vcds
-reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v AutoAdminLogon /t REG_SZ /d "1" /f
-reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultUserName /t REG_SZ /d "Docker" /f
-reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultPassword /t REG_SZ /d "vcds" /f
-
+# Cisty start bez modifikace prihlasovani
 bcdedit /set "{default}" recoveryenabled No
 bcdedit /set "{default}" bootstatuspolicy ignoreallfailures
 reg add "HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows Defender" /v DisableAntiSpyware /t REG_DWORD /d 1 /f
-reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v LimitBlankPasswordUse /t REG_DWORD /d 0 /f
 reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Terminal Server\TSAppAllowList" /v fDisabledAllowList /t REG_DWORD /d 1 /f
 route delete 0.0.0.0
 
@@ -147,22 +166,32 @@ if (-Not (Test-Path "\\host.lan\Data\vcds_path.txt")) { $Action = "SETUP" }
 if ($Action -eq "SETUP") {
   Start-Process "notepad.exe" "\\host.lan\Data\navod.txt" -Wait
   [void][System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms")
-  $dlg = New-Object System.Windows.Forms.OpenFileDialog
-  $dlg.Filter = "Spustitelne soubory (*.exe)|*.exe"
-  $dlg.Title = "Vyber spousteci soubor VCDS"
-  $dlg.InitialDirectory = "C:\"
-  if ($dlg.ShowDialog() -eq 'OK') { 
-      $dlg.FileName | Out-File '\\host.lan\Data\vcds_path.txt' -Encoding ascii 
+  
+  $valid = $false
+  while (-not $valid) {
+      $dlg = New-Object System.Windows.Forms.OpenFileDialog
+      $dlg.Filter = "Spustitelne soubory (*.exe)|*.exe"
+      $dlg.Title = "Vyber vcdsloader.exe (MUSI BYT NA DISKU C:)"
+      $dlg.InitialDirectory = "C:\"
+      if ($dlg.ShowDialog() -eq 'OK') { 
+          if ($dlg.FileName.StartsWith("C:\", $true, $null)) {
+              $dlg.FileName | Out-File '\\host.lan\Data\vcds_path.txt' -Encoding ascii
+              $valid = $true
+          } else {
+              [System.Windows.Forms.MessageBox]::Show("Chyba: Musis vybrat spousteci soubor z disku C:! (Neklikej na Shared/Plochu)", "Spatna cesta", 0, 16)
+          }
+      } else {
+          exit
+      }
   }
-  try { "RUN" | Out-File "\\host.lan\Data\action.txt" -Encoding ascii } catch {}
 } else {
   if (Test-Path "\\host.lan\Data\vcds_path.txt") {
       $exe = (Get-Content "\\host.lan\Data\vcds_path.txt").Trim().Replace('"', '')
       $dir = Split-Path -Parent $exe
       $file = Split-Path -Leaf $exe
+      $drive = $dir.Substring(0,2)
       
-      # Oprava pro UNC cesty pres pushd
-      $batContent = "pushd `"$dir`"`r`nstart `"`" `"$file`"`r`nexit"
+      $batContent = "@echo off`r`n$drive`r`ncd `"$dir`"`r`nstart `"`" `"$file`"`r`nexit"
       $batContent | Out-File "C:\run_vcds.bat" -Encoding ascii
 
       if ($Action -eq "RDP") {
@@ -268,7 +297,7 @@ run_vcds() {
         local RDP_ARGS=(
             "/v:127.0.0.1:33890"
             "/u:docker"
-            "/p:vcds"
+            "/p:"
             "/cert:ignore"
             "+clipboard"
             "/dynamic-resolution"
@@ -317,7 +346,7 @@ uninstall() {
 
 clear
 echo "=========================================="
-echo "    VCDS Docker Instalator (v$CURRENT_VERSION)    "
+echo "    VCDS Docker Instalator (v$CURRENT_MAJOR.$CURRENT_MINOR)    "
 echo "=========================================="
 
 check_system
