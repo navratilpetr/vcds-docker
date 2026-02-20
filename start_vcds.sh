@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # =================================================================
-# VCDS Docker Starter (v2.35 - Clean AutoLogon & Dir Fix)
+# VCDS Docker Starter (v2.36 - UNC path pushd fix)
 # =================================================================
 
-CURRENT_VERSION="2.35"
+CURRENT_VERSION="2.36"
 REPO_URL="https://raw.githubusercontent.com/navratilpetr/vcds-docker/refs/heads/main/start_vcds.sh"
 LOCAL_BIN="/usr/local/bin/vcds"
 
@@ -128,13 +128,11 @@ create_shared_scripts() {
     printf "=== NAVOD K INSTALACI VCDS ===\r\n1. V Linuxu uloz instalacku VCDS do slozky 'vcds_transfer'.\r\n2. Ve Windows otevri slozku 'Shared'.\r\n3. Nainstaluj VCDS vcetne vsech ovladacu.\r\n4. Po dokonceni instalace ZAVRI tento soubor.\r\n5. Nasledne vyber spousteci soubor VCDS.\r\n" > "$TRANSFER_DIR/navod.txt"
 
     cat << 'EOF' > "$TRANSFER_DIR/startup.ps1"
-# Oprava AutoLogon s heslem (aby to uz neviselo na prihlasovaci obrazovce)
 net user docker vcds
 reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v AutoAdminLogon /t REG_SZ /d "1" /f
 reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultUserName /t REG_SZ /d "Docker" /f
 reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultPassword /t REG_SZ /d "vcds" /f
 
-# Bezpecnostni upravy
 bcdedit /set "{default}" recoveryenabled No
 bcdedit /set "{default}" bootstatuspolicy ignoreallfailures
 reg add "HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows Defender" /v DisableAntiSpyware /t REG_DWORD /d 1 /f
@@ -159,10 +157,12 @@ if ($Action -eq "SETUP") {
   try { "RUN" | Out-File "\\host.lan\Data\action.txt" -Encoding ascii } catch {}
 } else {
   if (Test-Path "\\host.lan\Data\vcds_path.txt") {
-      # Reseni chyby VCDS.exe not found: vytvoreni bataku s explicitnim prechodem do slozky
       $exe = (Get-Content "\\host.lan\Data\vcds_path.txt").Trim().Replace('"', '')
       $dir = Split-Path -Parent $exe
-      $batContent = "cd /d `"$dir`"`r`nstart `"`" `"$exe`""
+      $file = Split-Path -Leaf $exe
+      
+      # Oprava pro UNC cesty pres pushd
+      $batContent = "pushd `"$dir`"`r`nstart `"`" `"$file`"`r`nexit"
       $batContent | Out-File "C:\run_vcds.bat" -Encoding ascii
 
       if ($Action -eq "RDP") {
@@ -224,7 +224,7 @@ run_vcds() {
         elif command -v xfreerdp &> /dev/null; then
             RDP_CMD="xfreerdp"
         else
-            echo "CHYBA: xfreerdp nebo xfreerdp3 neni nainstalovan!"
+            echo "CHYBA: xfreerdp neni nainstalovan!"
             exit 1
         fi
     fi
@@ -283,13 +283,8 @@ run_vcds() {
             RDP_ARGS+=("/tls-seclevel:0")
         fi
 
-        echo "Spoustim VCDS (pouziva se $RDP_CMD)..."
+        echo "Spoustim VCDS..."
         sudo -u "$REAL_USER" env DISPLAY="${DISPLAY:-:0}" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" XDG_RUNTIME_DIR="/run/user/$(id -u "$REAL_USER")" $RDP_CMD "${RDP_ARGS[@]}" &> /dev/null
-        local RDP_EXIT=$?
-        
-        if [ $RDP_EXIT -ne 0 ]; then
-            read -p "RDP ukonceno s chybou ($RDP_EXIT). Stiskni [ENTER]..."
-        fi
         
         echo "Ukoncuji kontejner..."
         docker stop vcds_win7 &> /dev/null
