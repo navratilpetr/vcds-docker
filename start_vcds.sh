@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # =================================================================
-# VCDS Docker Starter (v2.33 - Unified Fix)
+# VCDS Docker Starter (v2.35 - Clean AutoLogon & Dir Fix)
 # =================================================================
 
-CURRENT_VERSION="2.33"
+CURRENT_VERSION="2.35"
 REPO_URL="https://raw.githubusercontent.com/navratilpetr/vcds-docker/refs/heads/main/start_vcds.sh"
 LOCAL_BIN="/usr/local/bin/vcds"
 
@@ -128,13 +128,18 @@ create_shared_scripts() {
     printf "=== NAVOD K INSTALACI VCDS ===\r\n1. V Linuxu uloz instalacku VCDS do slozky 'vcds_transfer'.\r\n2. Ve Windows otevri slozku 'Shared'.\r\n3. Nainstaluj VCDS vcetne vsech ovladacu.\r\n4. Po dokonceni instalace ZAVRI tento soubor.\r\n5. Nasledne vyber spousteci soubor VCDS.\r\n" > "$TRANSFER_DIR/navod.txt"
 
     cat << 'EOF' > "$TRANSFER_DIR/startup.ps1"
-# Retroaktivni aplikace zasadnich oprav pri kazdem startu
+# Oprava AutoLogon s heslem (aby to uz neviselo na prihlasovaci obrazovce)
+net user docker vcds
+reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v AutoAdminLogon /t REG_SZ /d "1" /f
+reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultUserName /t REG_SZ /d "Docker" /f
+reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultPassword /t REG_SZ /d "vcds" /f
+
+# Bezpecnostni upravy
 bcdedit /set "{default}" recoveryenabled No
 bcdedit /set "{default}" bootstatuspolicy ignoreallfailures
 reg add "HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows Defender" /v DisableAntiSpyware /t REG_DWORD /d 1 /f
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v LimitBlankPasswordUse /t REG_DWORD /d 0 /f
 reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Terminal Server\TSAppAllowList" /v fDisabledAllowList /t REG_DWORD /d 1 /f
-net user docker vcds
-reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultPassword /t REG_SZ /d "vcds" /f
 route delete 0.0.0.0
 
 $Action = "RUN"
@@ -154,17 +159,17 @@ if ($Action -eq "SETUP") {
   try { "RUN" | Out-File "\\host.lan\Data\action.txt" -Encoding ascii } catch {}
 } else {
   if (Test-Path "\\host.lan\Data\vcds_path.txt") {
-      # Ciste vytvoreni spousteciho bataku na C: s osetrenim pracovni slozky
+      # Reseni chyby VCDS.exe not found: vytvoreni bataku s explicitnim prechodem do slozky
       $exe = (Get-Content "\\host.lan\Data\vcds_path.txt").Trim().Replace('"', '')
       $dir = Split-Path -Parent $exe
-      $batPath = "C:\run_vcds.bat"
-      "cd /d `"$dir`"`r`n`"$exe`"" | Out-File $batPath -Encoding ascii
+      $batContent = "cd /d `"$dir`"`r`nstart `"`" `"$exe`""
+      $batContent | Out-File "C:\run_vcds.bat" -Encoding ascii
 
       if ($Action -eq "RDP") {
           "READY" | Out-File "\\host.lan\Data\status.txt" -Encoding ascii
           Start-Process "tsdiscon.exe"
       } else {
-          Start-Process "cmd.exe" -ArgumentList "/c $batPath" -WindowStyle Hidden
+          Start-Process "C:\run_vcds.bat"
       }
   }
 }
@@ -224,7 +229,6 @@ run_vcds() {
         fi
     fi
     
-    # Reset synchronizace
     rm -f "$TRANSFER_DIR/status.txt"
     echo "$ACTION" > "$TRANSFER_DIR/action.txt"
     create_shared_scripts
@@ -247,11 +251,20 @@ run_vcds() {
       dockurr/windows > /dev/null
 
     if [ "$MODE" == "RDP" ]; then
+        VCDS_PATH=$(cat "$TRANSFER_DIR/vcds_path.txt" 2>/dev/null | tr -d '\r\n')
+        if [ -z "$VCDS_PATH" ]; then
+            echo "Cesta k VCDS chybi! Spust volbu 3."
+            docker stop vcds_win7 &> /dev/null
+            exit 1
+        fi
+        
+        echo "Cekam na start systemu..."
+        until docker logs vcds_win7 2>&1 | grep -q "Windows started successfully"; do sleep 2; done
+        
         echo "Cekam na uvolneni relace ve Windows..."
         until grep -q "READY" "$TRANSFER_DIR/status.txt" 2>/dev/null; do sleep 1; done
         sleep 2
         
-        # Volani noveho BAT zavadece (resi cestu)
         local RDP_ARGS=(
             "/v:127.0.0.1:33890"
             "/u:docker"
@@ -268,11 +281,15 @@ run_vcds() {
         else
             RDP_ARGS+=("/app:||C:\run_vcds.bat")
             RDP_ARGS+=("/tls-seclevel:0")
-            RDP_ARGS+=("/sec:nla")
         fi
 
-        echo "Spoustim VCDS..."
+        echo "Spoustim VCDS (pouziva se $RDP_CMD)..."
         sudo -u "$REAL_USER" env DISPLAY="${DISPLAY:-:0}" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" XDG_RUNTIME_DIR="/run/user/$(id -u "$REAL_USER")" $RDP_CMD "${RDP_ARGS[@]}" &> /dev/null
+        local RDP_EXIT=$?
+        
+        if [ $RDP_EXIT -ne 0 ]; then
+            read -p "RDP ukonceno s chybou ($RDP_EXIT). Stiskni [ENTER]..."
+        fi
         
         echo "Ukoncuji kontejner..."
         docker stop vcds_win7 &> /dev/null
