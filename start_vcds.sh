@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # =================================================================
-# VCDS Docker Starter (v2.31 - tsdiscon pro uvolneni relace)
+# VCDS Docker Starter (v2.32 - Trim exe path fix)
 # =================================================================
 
-CURRENT_VERSION="2.31"
+CURRENT_VERSION="2.32"
 REPO_URL="https://raw.githubusercontent.com/navratilpetr/vcds-docker/refs/heads/main/start_vcds.sh"
 LOCAL_BIN="/usr/local/bin/vcds"
 
@@ -158,11 +158,10 @@ if ($Action -eq "SETUP") {
   }
   try { "RUN" | Out-File "\\host.lan\Data\action.txt" -Encoding ascii } catch {}
 } elseif ($Action -eq "RDP") {
-  # Odpojeni lokalni relace pro uvolneni mista
   Start-Process "tsdiscon.exe"
 } else {
   if (Test-Path "\\host.lan\Data\vcds_path.txt") {
-      $exe = Get-Content "\\host.lan\Data\vcds_path.txt"
+      $exe = (Get-Content "\\host.lan\Data\vcds_path.txt").Trim()
       $dir = Split-Path -Parent $exe
       Start-Process -FilePath $exe -WorkingDirectory $dir
   }
