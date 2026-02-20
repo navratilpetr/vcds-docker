@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # =================================================================
-# VCDS Docker Starter (v2.30 - RDP Admin session takeover)
+# VCDS Docker Starter (v2.31 - tsdiscon pro uvolneni relace)
 # =================================================================
 
-CURRENT_VERSION="2.30"
+CURRENT_VERSION="2.31"
 REPO_URL="https://raw.githubusercontent.com/navratilpetr/vcds-docker/refs/heads/main/start_vcds.sh"
 LOCAL_BIN="/usr/local/bin/vcds"
 
@@ -157,6 +157,9 @@ if ($Action -eq "SETUP") {
       $dlg.FileName | Out-File '\\host.lan\Data\vcds_path.txt' -Encoding ascii 
   }
   try { "RUN" | Out-File "\\host.lan\Data\action.txt" -Encoding ascii } catch {}
+} elseif ($Action -eq "RDP") {
+  # Odpojeni lokalni relace pro uvolneni mista
+  Start-Process "tsdiscon.exe"
 } else {
   if (Test-Path "\\host.lan\Data\vcds_path.txt") {
       $exe = Get-Content "\\host.lan\Data\vcds_path.txt"
@@ -205,6 +208,8 @@ run_vcds() {
     
     if [ "$MODE" == "SETUP" ]; then
         ACTION="SETUP"
+    elif [ "$MODE" == "RDP" ]; then
+        ACTION="RDP"
     fi
 
     if [ "$MODE" == "RDP" ]; then
@@ -246,9 +251,11 @@ run_vcds() {
             exit 1
         fi
         
-        echo "Cekam na aplikaci nastaveni a RDP server (15s)..."
-        until bash -c 'echo > /dev/tcp/127.0.0.1/33890' 2>/dev/null; do sleep 2; done
-        sleep 15
+        echo "Cekam na start systemu..."
+        until docker logs vcds_win7 2>&1 | grep -q "Windows started successfully"; do sleep 2; done
+        
+        echo "Cekam na uvolneni relace (tsdiscon)..."
+        sleep 10
         
         local RDP_ARGS=(
             "/v:127.0.0.1:33890"
@@ -257,7 +264,6 @@ run_vcds() {
             "/cert:ignore"
             "+clipboard"
             "/dynamic-resolution"
-            "+admin"
         )
 
         if [ "$RDP_CMD" == "xfreerdp3" ]; then
