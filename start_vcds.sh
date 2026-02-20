@@ -5,7 +5,7 @@
 # =================================================================
 
 CURRENT_MAJOR="3"
-CURRENT_MINOR="03"
+CURRENT_MINOR="05"
 REPO_URL="https://raw.githubusercontent.com/navratilpetr/vcds-docker/refs/heads/main/start_vcds.sh"
 LOCAL_BIN="/usr/local/bin/vcds"
 
@@ -127,11 +127,6 @@ create_install_bat() {
 echo 127.0.0.1 update.ross-tech.com >> %WINDIR%\System32\drivers\etc\hosts
 echo 127.0.0.1 www.ross-tech.com >> %WINDIR%\System32\drivers\etc\hosts
 
-echo @echo off > %WINDIR%\kill_gw.bat
-echo ping -n 15 127.0.0.1 ^> nul >> %WINDIR%\kill_gw.bat
-echo route delete 0.0.0.0 >> %WINDIR%\kill_gw.bat
-schtasks /create /tn "VCDS_Kill_Gateway" /tr "cmd.exe /c %WINDIR%\kill_gw.bat" /sc onstart /ru SYSTEM /rl HIGHEST /f
-
 set STARTUP_DIR="%ALLUSERSPROFILE%\Microsoft\Windows\Start Menu\Programs\Startup"
 echo @echo off > %STARTUP_DIR%\vcds_launcher.bat
 echo timeout /t 5 /nobreak ^> nul >> %STARTUP_DIR%\vcds_launcher.bat
@@ -154,7 +149,6 @@ bcdedit /set "{default}" recoveryenabled No
 bcdedit /set "{default}" bootstatuspolicy ignoreallfailures
 reg add "HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows Defender" /v DisableAntiSpyware /t REG_DWORD /d 1 /f
 reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Terminal Server\TSAppAllowList" /v fDisabledAllowList /t REG_DWORD /d 1 /f
-route delete 0.0.0.0
 
 $Action = "RUN"
 if (Test-Path "\\host.lan\Data\action.txt") { $Action = (Get-Content "\\host.lan\Data\action.txt").Trim() }
