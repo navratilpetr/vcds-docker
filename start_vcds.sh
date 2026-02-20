@@ -5,7 +5,7 @@
 # =================================================================
 
 CURRENT_MAJOR="3"
-CURRENT_MINOR="00"
+CURRENT_MINOR="01"
 REPO_URL="https://raw.githubusercontent.com/navratilpetr/vcds-docker/refs/heads/main/start_vcds.sh"
 LOCAL_BIN="/usr/local/bin/vcds"
 
@@ -141,15 +141,7 @@ EOF
 }
 
 create_shared_scripts() {
-    cat << 'EOF' > "$TRANSFER_DIR/navod.txt"
-=== NAVOD K INSTALACI VCDS ===
-1. V Linuxu uloz instalacku a vcdsloader.exe do slozky 'vcds_transfer'.
-2. Tady ve Windows otevri slozku 'Shared'.
-3. Nainstaluj VCDS. DULEZITE: Instaluj vzdy primo na disk C: (napr. C:\Ross-Tech\VCDS).
-4. Zkopiruj vcdsloader.exe ze slozky Shared do slozky s nainstalovanym VCDS na disku C:.
-5. Po dokonceni ZAVRI tento soubor.
-6. Vyskoci okno, ve kterem vyberes ten zkopirovany vcdsloader.exe primo z disku C:.
-EOF
+    printf "=== NAVOD K INSTALACI VCDS ===\r\n1. V Linuxu uloz instalacku a vcdsloader.exe do slozky 'vcds_transfer'.\r\n2. Tady ve Windows otevri slozku 'Shared'.\r\n3. Nainstaluj VCDS. DULEZITE: Instaluj vzdy primo na disk C: (napr. C:\\Ross-Tech\\VCDS).\r\n4. Zkopiruj vcdsloader.exe ze slozky Shared do slozky s nainstalovanym VCDS na disku C:.\r\n5. Po dokonceni ZAVRI tento soubor.\r\n6. Vyskoci okno, ve kterem vyberes ten zkopirovany vcdsloader.exe primo z disku C:.\r\n" > "$TRANSFER_DIR/navod.txt"
 
     cat << 'EOF' > "$TRANSFER_DIR/startup.ps1"
 # Cisty start bez modifikace prihlasovani
@@ -157,6 +149,8 @@ bcdedit /set "{default}" recoveryenabled No
 bcdedit /set "{default}" bootstatuspolicy ignoreallfailures
 reg add "HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows Defender" /v DisableAntiSpyware /t REG_DWORD /d 1 /f
 reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Terminal Server\TSAppAllowList" /v fDisabledAllowList /t REG_DWORD /d 1 /f
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v LimitBlankPasswordUse /t REG_DWORD /d 0 /f
+net user docker ""
 route delete 0.0.0.0
 
 $Action = "RUN"
@@ -301,6 +295,7 @@ run_vcds() {
             "/cert:ignore"
             "+clipboard"
             "/dynamic-resolution"
+            "/sec:rdp"
         )
 
         if [ "$RDP_CMD" == "xfreerdp3" ]; then
@@ -312,8 +307,13 @@ run_vcds() {
             RDP_ARGS+=("/tls-seclevel:0")
         fi
 
-        echo "Spoustim VCDS..."
-        sudo -u "$REAL_USER" env DISPLAY="${DISPLAY:-:0}" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" XDG_RUNTIME_DIR="/run/user/$(id -u "$REAL_USER")" $RDP_CMD "${RDP_ARGS[@]}" &> /dev/null
+        echo "Spoustim VCDS ($RDP_CMD)..."
+        sudo -u "$REAL_USER" env DISPLAY="${DISPLAY:-:0}" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" XDG_RUNTIME_DIR="/run/user/$(id -u "$REAL_USER")" $RDP_CMD "${RDP_ARGS[@]}"
+        local RDP_EXIT=$?
+        
+        if [ $RDP_EXIT -ne 0 ]; then
+            read -p "RDP ukonceno s chybou ($RDP_EXIT). Stiskni [ENTER]..."
+        fi
         
         echo "Ukoncuji kontejner..."
         docker stop vcds_win7 &> /dev/null
