@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # =================================================================
-# VCDS Docker Starter (v2.29 - RDP Kerberos fallback fix)
+# VCDS Docker Starter (v2.30 - RDP Admin session takeover)
 # =================================================================
 
-CURRENT_VERSION="2.29"
+CURRENT_VERSION="2.30"
 REPO_URL="https://raw.githubusercontent.com/navratilpetr/vcds-docker/refs/heads/main/start_vcds.sh"
 LOCAL_BIN="/usr/local/bin/vcds"
 
@@ -246,9 +246,9 @@ run_vcds() {
             exit 1
         fi
         
-        echo "Cekam na aplikaci nastaveni a RDP server (10s)..."
+        echo "Cekam na aplikaci nastaveni a RDP server (15s)..."
         until bash -c 'echo > /dev/tcp/127.0.0.1/33890' 2>/dev/null; do sleep 2; done
-        sleep 10
+        sleep 15
         
         local RDP_ARGS=(
             "/v:127.0.0.1:33890"
@@ -257,6 +257,7 @@ run_vcds() {
             "/cert:ignore"
             "+clipboard"
             "/dynamic-resolution"
+            "+admin"
         )
 
         if [ "$RDP_CMD" == "xfreerdp3" ]; then
