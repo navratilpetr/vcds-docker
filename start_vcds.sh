@@ -44,6 +44,7 @@ if [ -n "$REMOTE_SCRIPT" ]; then
             chmod +x "$LOCAL_BIN"
             REAL_USER=${SUDO_USER:-$USER}
             REAL_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
+            docker stop vcds_win7 &> /dev/null
             rm -f "${REAL_HOME}/vcds_data/data.img"
             echo "Aktualizace dokoncena. Restartuji..."
             exec "$LOCAL_BIN" "$@"
